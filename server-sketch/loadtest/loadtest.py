@@ -602,7 +602,15 @@ def main():
     ap.add_argument('--seed', type=int, default=1)
     ap.add_argument('--out', default='loadtest_report.json')
     ap.add_argument('--analyze', help='re-analyze a saved report json')
+    ap.add_argument('--scenario', choices=['load', 'disconnects'], default='load',
+                    help='disconnects = disconnect / rejoin probes + population (see disconnects.py)')
+    ap.add_argument('--part', choices=['all', 'probes', 'population'], default='all', help='disconnects: which part')
+    ap.add_argument('--restart-cmd', help='disconnects: shell command that restarts the server (keeps its node-id file)')
+    ap.add_argument('--restart-at', type=float, help='disconnects population: restart the server at this second')
     a = ap.parse_args()
+    if a.scenario == 'disconnects':
+        import disconnects
+        return disconnects.run(a)
     if a.analyze:
         rep = json.load(open(a.analyze))
     else:

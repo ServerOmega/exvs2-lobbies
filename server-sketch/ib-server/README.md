@@ -28,7 +28,7 @@ git am /path/to/exvs2-matchmaking/server-sketch/ib-server/online-matchmaking.pat
 dotnet publish Server-Infinite -c Release -r win-x64
 # or Linux server:
 dotnet build Server-Infinite -c Release -p:LinuxHost=true -o out
-# matchmaker unit tests (18 tests):
+# matchmaker unit tests (25 tests):
 dotnet test Tests/Matchmaking.Tests
 ```
 Copy your existing `ServerInfinite.db` next to the new build if you want to keep cards; the new migration

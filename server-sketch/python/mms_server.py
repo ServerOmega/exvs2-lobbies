@@ -75,8 +75,10 @@ class NodeIdAllocator:
     def __init__(self, path=None, start=1000):
         self.path, self.lock = path, threading.Lock()
         self.next = start
+        self.first_this_run = 0        # first id of this process if ids were issued before (state file), else 0
         if path and os.path.exists(path):
             self.next = max(start, json.load(open(path)).get('next_node_id', start))
+            self.first_this_run = self.next
 
     def take(self, n):
         n = max(1, min(int(n or 1), 16))
@@ -159,6 +161,7 @@ class Unit:
         self.bl_loc = set(e.get('bl_loc_ids', []))
         self.timeout = e.get('matching_timeout', 150)
         self.created = self.last_seen = now
+        self.seen_by_node = {}         # last CheckMatching per human node (only nodes that polled at least once)
         self.mmr = ratings.team(self.am_ids()) if ratings else 1500.0
         self.room = None
 
@@ -219,6 +222,7 @@ class Matchmaker:
         self.lock = threading.Lock()
         self.stale_after = stale_after
         self.ended = {}        # node_id -> time its unit was dropped by the server (-> MATCH_CANCELED once)
+        self.first_node_this_run = 0   # unknown node below this was issued before a restart -> MATCH_CANCELED
         self.by_node = {}      # node_id -> Unit (every human node of a unit points to it)
         self.queue = []        # waiting units, FIFO
         self.rooms = {}        # room_id -> {'groups': {0: am_ids, 1: am_ids}, 'world':, 'at':}
@@ -250,12 +254,19 @@ class Matchmaker:
             for n in t.node_ids():
                 self.ended.pop(n, None)
                 old = self.by_node.get(n)
-                if old and old.room is None and old.node_ids() == t.node_ids():
+                # disconnect test 2026-11-13: the same leader re-entering with a NEW apply_id (came back after a
+                # drop, maybe in another mode) was merged into its old entry -> old mode kept. Merge only the
+                # partner's own entry or a retry of the same entry.
+                if old and old.room is None and old.node_ids() == t.node_ids() and \
+                        (t.leader != old.leader or t.apply_id == old.apply_id):
                     old.last_seen = now
                     for n2 in t.node_ids(): self.by_node[n2] = old
                     return SUCCESS
                 if old and old.room is None:
-                    self._drop(old)                                   # re-entry replaces stale wait
+                    # re-entry replaces stale wait; disconnect test: with a tombstone, so a pair leader whose
+                    # partner re-entered solo on the same node gets MATCH_CANCELED (was ERR_MATCH_NOENTRY)
+                    self._drop(old, now)
+            for n in t.node_ids(): self.ended.pop(n, None)
             # load test 2026-11-13: one queue slot per cabinet; an older waiting unit of the same cabinet (left
             # without CancelMatching, then re-entered with new node ids) used to match too -> two rooms at once.
             serials = {c.get('pcb_serial') for c in t.humans() if c.get('pcb_serial')}
@@ -272,22 +283,31 @@ class Matchmaker:
     def check(self, node_id, now):
         with self.lock:
             seen = self.by_node.get(node_id)
-            if seen: seen.last_seen = now                             # before the sweep: the poller is alive
+            if seen:                                                  # before the sweep: the poller is alive
+                seen.last_seen = now
+                if node_id in seen.node_ids(): seen.seen_by_node[node_id] = now
             self._sweep(now)
             t = self.by_node.get(node_id)
-            if t is None:                                             # ended by timeout / partner cancel / staleness
-                return (MATCH_CANCELED if self.ended.pop(node_id, None) is not None else ERR_MATCH_NOENTRY), None
+            if t is None:                             # ended by timeout / partner cancel / staleness / restart
+                gone = self.ended.pop(node_id, None) is not None or 0 < node_id < self.first_node_this_run
+                return (MATCH_CANCELED if gone else ERR_MATCH_NOENTRY), None
             t.last_seen = now
             if t.room is None: self._try_match(now)                   # bands widen / fill timer runs with time
             if t.room: return SUCCESS, t.room
             if now - t.created > t.timeout:
-                self._drop(t, now, node_id); return MATCH_CANCELED, None            # game falls back (CPU battle) [M]
+                # disconnect test: tombstone the polling node too, so a retried poll (lost response) gets
+                # MATCH_CANCELED again instead of ERR_MATCH_NOENTRY
+                self._drop(t, now); return MATCH_CANCELED, None                     # game falls back (CPU battle) [M]
             return SUCCESS, None                                      # empty = keep polling
 
-    def cancel(self, node_id, now=0):
+    def cancel(self, node_id, now=0, apply_id=0):
         with self.lock:
             t = self.by_node.get(node_id)
-            if t and t.room is None: self._drop(t, now, node_id)
+            if not t or t.room is not None: return
+            # disconnect test 2026-11-13: a late / reordered cancel of an OLDER attempt (leader already re-entered
+            # with a new apply_id) cancelled the current entry. Only the leader's apply_id is comparable.
+            if apply_id and node_id == t.leader and apply_id != t.apply_id: return
+            self._drop(t, now, node_id)
 
     def result(self, room_id, winner_group):
         with self.lock:
@@ -368,7 +388,11 @@ class Matchmaker:
     def _sweep(self, now):
         for t in set(self.by_node.values()):
             # load test 2026-11-13: was last_seen > STALE_AFTER + timeout (~170 s of ghost matches)
-            if t.room is None and now - t.last_seen > self.stale_after: self._drop(t, now)
+            # disconnect test 2026-11-13: staleness per cabinet; the partner's polls kept a pair with a vanished
+            # leader (or vice versa) matchable -> ghost in the room.
+            if t.room is None and (now - t.last_seen > self.stale_after or
+                                   any(now - s > self.stale_after for s in t.seen_by_node.values())):
+                self._drop(t, now)
             elif t.room and now - t.room['at'] > MATCHED_KEEP: self._drop(t)
         for n in [n for n, at in self.ended.items() if now - at > ENDED_KEEP]:
             del self.ended[n]
@@ -415,7 +439,8 @@ class Mms:
                 body_ = {'room_id': room['room_id'], 'apply_id': room['apply_id'], 'clients': room['clients']}
             resp['check_matching'] = body_
         elif rtype == CANCEL:
-            self.mm.cancel(req.get('cancel_matching', {}).get('node_id', 0), now)
+            c = req.get('cancel_matching', {})
+            self.mm.cancel(c.get('node_id', 0), now, c.get('apply_id', 0))
             resp['cancel_matching'] = {}
         elif rtype == MATCHING_SETTING:
             resp['matching_setting'] = {}
@@ -470,8 +495,10 @@ def main():
     ap.add_argument('-v', action='store_true')
     a = ap.parse_args()
     logging.basicConfig(level=logging.DEBUG if a.v else logging.INFO, format='%(asctime)s %(name)s %(message)s')
-    mms = Mms(NodeIdAllocator(a.state), Matchmaker(RatingStore(a.ratings), a.fill_after, not a.no_partial,
-                                                                 stale_after=max(a.stale_after, 3 * POLL_INTERVAL)))
+    nodes = NodeIdAllocator(a.state)
+    mm = Matchmaker(RatingStore(a.ratings), a.fill_after, not a.no_partial, stale_after=max(a.stale_after, 3 * POLL_INTERVAL))
+    mm.first_node_this_run = nodes.first_this_run
+    mms = Mms(nodes, mm)
     srv = ThreadingHTTPServer((a.host, a.port), make_handler(mms, a.result_token))
     log.info('listening on http://%s:%d/mms', a.host, a.port)
     srv.serve_forever()

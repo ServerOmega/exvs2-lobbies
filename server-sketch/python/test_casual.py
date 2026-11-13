@@ -178,5 +178,69 @@ class LoadTestRegressions(unittest.TestCase):
         e = entry(23); e['myclient'] = dict(e['myclient'], node_id=0)
         self.assertEqual(self.mm.entry(e, 0), ERR_NODEID)
 
+class DisconnectRegressions(unittest.TestCase):
+    """Bugs found by server-sketch/loadtest/disconnects.py (2026-11-13)."""
+    def setUp(self):
+        self.mm = Matchmaker(RatingStore(), fill_after=30, partial=True, seed=1, stale_after=1e6)
+
+    def test_same_node_reentry_with_new_apply_replaces_old_entry(self):
+        a = entry(23); self.mm.entry(a, 0)
+        again = dict(entry(18), myclient=a['myclient'], myplayer=a['myplayer'], apply_id=2)
+        self.mm.entry(again, 5)
+        self.assertEqual(len(self.mm.queue), 1)
+        for _ in range(3): self.mm.entry(entry(23), 6)
+        self.assertIsNone(self.mm.check(a['myclient']['node_id'], 7)[1])
+        for _ in range(3): self.mm.entry(entry(18), 8)
+        code, room = self.mm.check(a['myclient']['node_id'], 9)
+        self.assertEqual(code, SUCCESS); self.assertIsNotNone(room)
+
+    def _pair_one_stops(self, leader_vanishes):
+        mm = Matchmaker(RatingStore(), fill_after=1000, partial=True, seed=1)    # default stale_after 20 s
+        e = entry(23, 'T'); mm.entry(e, 0)
+        lead, mate = e['myclient']['node_id'], e['groups'][0]['client']['node_id']
+        alive, gone = (mate, lead) if leader_vanishes else (lead, mate)
+        mm.check(lead, 1); mm.check(mate, 1)
+        for t in range(4, 20, 3): self.assertEqual(mm.check(alive, t)[0], SUCCESS)
+        self.assertEqual(mm.check(alive, 22)[0], MATCH_CANCELED)
+        for _ in range(2): mm.entry(entry(23), 23)
+        self.assertEqual(len(mm.queue), 2)
+        self.assertEqual(mm.check(gone, 30)[0], MATCH_CANCELED)
+
+    def test_pair_dropped_when_leader_stops_polling(self): self._pair_one_stops(True)
+    def test_pair_dropped_when_partner_stops_polling(self): self._pair_one_stops(False)
+
+    def test_leader_told_canceled_when_partner_reenters_solo(self):
+        e = entry(23, 'T'); self.mm.entry(e, 0)
+        g = e['groups'][0]
+        solo = dict(entry(23), myclient=g['client'], myplayer=g['player'], apply_id=5)
+        self.mm.entry(solo, 3)
+        self.assertEqual(self.mm.check(e['myclient']['node_id'], 4)[0], MATCH_CANCELED)
+        self.assertEqual(self.mm.check(g['client']['node_id'], 4)[0], SUCCESS)
+        self.assertEqual(len(self.mm.queue), 1)
+
+    def test_retried_poll_after_timeout_still_canceled(self):
+        a = entry(23, timeout=60); self.mm.entry(a, 0)
+        self.assertEqual(self.mm.check(a['myclient']['node_id'], 61)[0], MATCH_CANCELED)
+        self.assertEqual(self.mm.check(a['myclient']['node_id'], 62)[0], MATCH_CANCELED)
+
+    def test_late_cancel_of_older_attempt_ignored(self):
+        a = entry(23); self.mm.entry(a, 0)
+        self.mm.entry(dict(a, apply_id=2), 1)
+        self.mm.cancel(a['myclient']['node_id'], 2, apply_id=1)
+        self.assertEqual(len(self.mm.queue), 1)
+        self.mm.cancel(a['myclient']['node_id'], 3, apply_id=2)
+        self.assertEqual(len(self.mm.queue), 0)
+
+    def test_node_from_before_restart_gets_match_canceled(self):
+        import os, tempfile
+        from mms_server import NodeIdAllocator
+        path = os.path.join(tempfile.mkdtemp(), 'nodes.json')
+        before = NodeIdAllocator(path); self.assertEqual(before.first_this_run, 0)
+        old = before.take(2)[0]
+        after = NodeIdAllocator(path)
+        mm = Matchmaker(RatingStore(), seed=1); mm.first_node_this_run = after.first_this_run
+        self.assertEqual(mm.check(old, 0)[0], MATCH_CANCELED)
+        self.assertEqual(mm.check(after.take(2)[0], 0)[0], ERR_MATCH_NOENTRY)
+
 if __name__ == '__main__':
     unittest.main(verbosity=2)

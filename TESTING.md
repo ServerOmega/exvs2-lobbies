@@ -9,6 +9,8 @@ Everything here is **untested in the real game**. Tick items off as they're veri
 
 ## Basic matchmaking
 - [x] Box load test with 100 / 200 / 500 fake cabinets against both matchmakers — no invariant violations after fixes ([analysis/load-test.md](analysis/load-test.md)); fake cabinets only
+- [x] Box disconnect/rejoin test (14 probes + 150-person run with mass drop and server restart) — 6 bugs fixed, 14/14 probes pass on both servers ([analysis/disconnect-test.md](analysis/disconnect-test.md)); fake cabinets only
+- [ ] Real game: what the cabinet does on MATCH_CANCELED vs ERR_MATCH_NOENTRY, and when a room member drops right after matching
 - [ ] EntryMatching + CheckMatching polling reaches the matchmaker (built-in `/match` or `mms_server.py`; capture with tcpdump)
 - [ ] A matched room actually starts a battle; capture the cabinet-to-cabinet (hole-punch / P2P) packet format
 - [ ] Play modes 1–6 land in separate queues; `battleMode` values other than 0 still use the LM path

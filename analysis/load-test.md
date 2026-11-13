@@ -90,9 +90,9 @@ Patch regenerated (`git format-patch 7f4b280`, one commit) and checked with `git
   table from IssueNodeId plus a trust decision. Low risk for a friends server, real risk for a public one.
 * **Malformed bodies → HTTP 500 on C#** (`ProtoException` in the model binder, logged as ERR). The Python server
   answers `ERR_REQUEST` with HTTP 200. The real cabinet never sends garbage, so left as is.
-* **Re-entry that re-uses the same node id with a new apply_id** merges into the old wait (keeps the old mode).
-  Only seen with the harness's "stale node id" misbehaviour (Python 500: 1 apply_id mismatch); the game is
-  believed to call IssueNodeId for every attempt.
+* ~~Re-entry that re-uses the same node id with a new apply_id merges into the old wait~~ — fixed in the
+  disconnect test ([disconnect-test.md](disconnect-test.md)), along with per-cabinet staleness for pairs, late cancels
+  and MATCH_CANCELED after restarts / retried polls.
 * **C# logs every MMS request** (`Request is …`, ~600 bytes) to console and file: ~10 GB/day at 200 req/s. Fine
   for testing; lower the level of `MatchController` for a public server.
 * A matched room is kept 60 s; a cabinet that does not poll for 60 s after being matched gets `ERR_MATCH_NOENTRY`
