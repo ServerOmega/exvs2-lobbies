@@ -1,4 +1,4 @@
-# exvs2-lobbies
+# exvs2-matchmaking
 
 > ⚠️ **Experimental — work in progress. This does not function yet.**
 >

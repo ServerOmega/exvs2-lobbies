@@ -1,4 +1,4 @@
-# exvs2-lobbies — notes (index)
+# exvs2-matchmaking — notes (index)
 
 > **2026-11-13:** this box's copy of the project was lost between sessions (binary, `tools/`,
 > most `analysis/` files, the original README). This README was re-created as an index; the

@@ -22,7 +22,7 @@ Needs the .NET 9 SDK (`yay -S dotnet-sdk` on Arch; on Windows install .NET 9 SDK
 ```bash
 git clone https://github.com/Chiang-17/EXVS2-IB-Server && cd EXVS2-IB-Server
 git checkout 7f4b280
-git am /path/to/exvs2-lobbies/server-sketch/ib-server/online-matchmaking.patch    # creates one commit
+git am /path/to/exvs2-matchmaking/server-sketch/ib-server/online-matchmaking.patch    # creates one commit
 
 # Windows server (like upstream's release):
 dotnet publish Server-Infinite -c Release -r win-x64
