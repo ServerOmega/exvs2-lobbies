@@ -1,12 +1,12 @@
 # exvs2-lobbies
 
 > ⚠️ **Experimental — work in progress. This does not function yet.**
-
-See [TESTING.md](TESTING.md) for the checklist of things that still need a real-game test.
 >
 > Nothing here is a working online service. The matchmaking server is an untested sketch,
 > the C# handlers are uncompiled, and the in-game WAN path has not been tried on a real cabinet.
 > Do not expect to queue up and play from this repository today.
+
+See [TESTING.md](TESTING.md) for the checklist of things that still need a real-game test.
 
 Research and prototypes for **MBON-console-style lobbies/rooms** and a **universal online
 matchmaking server** for arcade *Mobile Suit Gundam: Extreme Vs. 2 Infinite Boost* (EXVS2 IB).
