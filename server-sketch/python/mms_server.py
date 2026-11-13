@@ -13,7 +13,11 @@ Protocol facts this follows (see analysis/matchmaking.md, analysis/ranked-matchi
   * IssueNodeId: game asks issue_count=2 and rejects replies with fewer node_ids.
   * EntryMatching: game reads only poling_interval (seconds).
   * CheckMatching: code 0 + empty clients = "keep polling"; when matched return room_id and
-    ALL clients (incl. the requester and CPU stand-ins), group_id = team (0/1).
+    ALL clients (incl. the requester and CPU stand-ins), group_id = team (0/1).  The client keeps only
+    clients whose property[0] == "Y" (humans, max 4) and derives team = (group_id != first client's).
+  * Casual / shuffle (analysis/casual-shuffle-matching.md): solo-sortie entries carry no groups and are
+    shuffled into pairs by the SERVER; team-sortie entries carry their partner ("Y") or CPU ("N") as
+    groups[0] and are never split.  Per-mode buckets by world_id (+attr2 where it encodes shop/settings).
   * CancelMatching: reply ignored by the game.
   * Ranked = "Class Match G" (OnlineMatchingMode OMM_CLASS): world_id 13 (solo/shuffle) or 14 (team/fixed).
     Player.parameters: attr1 = TestMode wanMatchingGroupId (or 0), attr2 = class_id (team: the pair's
@@ -29,7 +33,7 @@ PING, ISSUE_NODE_ID, ENTRY, CHECK, CANCEL, MATCHING_SETTING = 0, 1, 2, 3, 4, 100
 SUCCESS, MATCH_CANCELED, PROCESS_WAIT = 0, 1, 2
 ERR_REQUEST, ERR_SERVER, ERR_MAINTENANCE, ERR_MATCH_NOENTRY = 100, 101, 102, 103
 ERR_NODEID, ERR_MATCH_CONDITION, ERR_DUPLICATE_ENTRY = 200, 201, 202
-NPC_SERIAL = 'PCB00000NPC'          # dummy CPU partner the game puts in groups[0]
+NPC_SERIAL = 'PCB00000NPC'          # CPU stand-in a TEAM-sortie entry puts in groups[0] (property "N")
 POLL_INTERVAL = 3                   # PROCESS_WAIT_POLING_INTERVAL from the proto
 STALE_AFTER = 20                    # s without CheckMatching -> drop entry
 MATCHED_KEEP = 60                   # s to keep a finished room for late polls
@@ -37,11 +41,33 @@ MATCHED_KEEP = 60                   # s to keep a finished room for late polls
 # Ranked (Class Match G).  world ids from the client's mode->world table (0x140753330), see ranked-matching.md §2.
 CLASS_WORLDS = {13: 'class-solo', 14: 'class-team'}
 A_GROUP, A_CLASS, A_LANFLAG, A_LEVEL = 1, 2, 3, 4
+A_EXTRA = 2                         # casual worlds: attr2 = mode-specific value (see casual-shuffle-matching.md §4)
 # Search widening for ranked: (seconds waited, max |level diff|, max |mmr diff|).  Last row = anything goes.
 RANKED_BANDS = [(0, 0, 100), (15, 1, 200), (35, 2, 350), (60, 99, 10 ** 9)]
 
-log = logging.getLogger('mms')
+# world_id -> (name, attr2 policy).  'hard' = attr2 must be equal to share a room, 'soft' = preferred only,
+# None = ignored.  Source: mode code -> world table 0x140753a3c and attr builders 0x140752b60 / 0x140753ab4.
+# Solo-sortie entries (kind 0) carry NO groups; team-sortie entries (kind 1) carry 1 group = the partner
+# (property "Y" = human partner cabinet, "N" = CPU stand-in PCB00000NPC).  See casual-shuffle-matching.md.
+WORLDS = {
+    5:  ('legacy-mode0', None),
+    13: ('class-solo', 'class'), 14: ('class-team', 'class'),              # Class Match G (ranked)
+    15: ('instore-solo', 'hard'), 16: ('instore-team', 'hard'),           # attr2 = hex(last 4 chars of loc_id)
+    17: ('shop-setting', 'hard'),                                          # attr2 = TestMode shop match settings
+    18: ('free-solo', 'soft'), 19: ('free-team', 'soft'), 20: ('free-solo-b', 'soft'),
+    25: ('free-mixed', 'soft'),                                            # attr2 = win-rate bucket 1/2
+    23: ('mix-match', 'soft'),                                             # Mix Match: solo+team, attr2 = 'veteran' flag
+    21: ('mode1', None), 22: ('mode2', None),
+    6: ('tag-solo', 'hard'), 7: ('tag-team', 'hard'), 24: ('tag-mixed', 'hard'),
+    26: ('tag-solo-def', 'hard'), 27: ('tag-team-def', 'hard'), 32: ('tag-mixed-def', 'hard'), 33: ('tag7', 'hard'),
+    8: ('mode8', 'hard'), 9: ('mode9', 'hard'),
+}
+SOFT_WAIT = 15                      # s during which a 'soft' attr2 (win-rate bucket, veteran flag) must match
+FILL_AFTER = 30                     # s the oldest waiter waits for a full 2v2 before a short-handed room is allowed
+POOL_MAX = 12                       # candidates examined per anchor (combinatorics bound)
+TEAM_SLOTS = 2                      # 2 players per side
 
+log = logging.getLogger('mms')
 
 class NodeIdAllocator:
     """Monotonic, persisted, globally unique node ids (never reuse: is_self == node_id compare)."""
@@ -93,23 +119,38 @@ class RatingStore:
             return d
 
 
-class Team:
-    """One EntryMatching = one side: the requesting cabinet + its groups[] (partner or CPU)."""
-    def __init__(self, req, now, ratings=None):
+def is_human(c):
+    """Client.property[0] == "Y" marks a real player; the client builds its CPU stand-in with "N"
+    (0x1407bb39f) and drops non-"Y" entries from its team table (0x1407540e0 / 0x140792760)."""
+    props = c.get('property') or []
+    if props:
+        return props[0].get('property_value') == 'Y'
+    return c.get('pcb_serial') != NPC_SERIAL
+
+
+class Unit:
+    """One EntryMatching = one unit: the requesting cabinet (+ its partner group for a team sortie).
+    Solo sortie -> 1 slot, no groups (shuffle candidate).  Team sortie -> 2 slots that always stay on
+    the same side; the partner is a human cabinet ("Y") or a CPU stand-in ("N")."""
+    def __init__(self, req, now, ratings=None, rng=None):
         e = req
         self.apply_id = e.get('apply_id', 0)
         self.leader = e['myclient']['node_id']
-        self.clients = [e['myclient']] + [g['client'] for g in e.get('groups', [])]
-        self.players = [e.get('myplayer', {})] + [g.get('player', {}) for g in e.get('groups', [])]
+        groups = e.get('groups', [])[:TEAM_SLOTS - 1]                 # never more than one partner per side
+        self.clients = [e['myclient']] + [g['client'] for g in groups]
+        self.players = [e.get('myplayer', {})] + [g.get('player', {}) for g in groups]
+        self.slots = len(self.clients)
+        self.team = self.slots > 1
         w = e.get('world', {})
         self.attrs = {p['attribute_id']: p['parameter'] for p in e.get('myplayer', {}).get('parameters', [])}
         self.world = w.get('world_id', 0)
+        self.wname, policy = WORLDS.get(self.world, ('world%d' % self.world, 'hard'))
         self.ranked = self.world in CLASS_WORLDS
-        # bucket: same game id + version + world (mode). attr 1 = TestMode wanMatchingGroupId when sent.
-        # Ranked: also same class (official rule: "matched within the same class"; attr2).
+        # bucket: same game id + version + world (mode) + attr1 (TestMode wanMatchingGroupId when sent).
         self.key = (w.get('mucha_game_id', ''), w.get('version', 0), self.world, self.attrs.get(A_GROUP, 0))
-        if self.ranked:
-            self.key += (self.attrs.get(A_CLASS, 0),)
+        if policy in ('class', 'hard'):                                # ranked: same class; in-store: same shop ...
+            self.key += (self.attrs.get(A_EXTRA, 0),)
+        self.soft = self.attrs.get(A_EXTRA, 0) if policy == 'soft' else None
         self.level = self.attrs.get(A_LEVEL, 0)
         self.seq_num = e.get('seq_num', 0)
         self.create_room = e.get('create_room_flag', 1)
@@ -121,13 +162,14 @@ class Team:
         self.room = None
 
     def humans(self):
-        return [c for c in self.clients if c.get('pcb_serial') != NPC_SERIAL]
+        return [c for c in self.clients if is_human(c)]
 
     def node_ids(self):
         return {c['node_id'] for c in self.humans()}
 
     def am_ids(self):
-        return {p.get('banapassport_am_id') for p in self.players if p.get('banapassport_am_id')}
+        return {p.get('banapassport_am_id') for p, c in zip(self.players, self.clients)
+                if p.get('banapassport_am_id') and is_human(c)}
 
     def locs(self):
         return {c.get('loc_id') for c in self.humans()}
@@ -135,9 +177,12 @@ class Team:
     def compatible(self, other, now=None):
         if self.key != other.key: return False
         if self.node_ids() & other.node_ids(): return False          # same cabinet(s)
-        if self.am_ids() & other.am_ids(): return False              # same card on both sides
+        if self.am_ids() & other.am_ids(): return False              # same card twice
         if self.bl_am & other.am_ids() or other.bl_am & self.am_ids(): return False
         if self.bl_loc & other.locs() or other.bl_loc & self.locs(): return False
+        if (self.soft is not None and other.soft is not None and self.soft != other.soft
+                and (now is None or now - min(self.created, other.created) < SOFT_WAIT)):
+            return False                                              # prefer like-for-like, then mix
         if self.ranked and now is not None:
             waited = now - min(self.created, other.created)          # the longer waiter widens the search
             lv, mm = 0, 0
@@ -146,21 +191,41 @@ class Team:
             if abs(self.level - other.level) > lv or abs(self.mmr - other.mmr) > mm: return False
         return True
 
-    def distance(self, other):
-        return abs(self.level - other.level) * 1000 + abs(self.mmr - other.mmr)
+
+def side_splits(units):
+    """All ways to put units on two sides of <= TEAM_SLOTS slots each, both sides non-empty;
+    a team unit is never split; units[0] is always on side 0."""
+    n = len(units)
+    for mask in range(1 << (n - 1)):
+        sides = ([units[0]], [])
+        for i in range(1, n):
+            sides[(mask >> (i - 1)) & 1].append(units[i])
+        if not sides[1]: continue
+        if any(sum(u.slots for u in s) > TEAM_SLOTS for s in sides): continue
+        yield sides
 
 
 class Matchmaker:
-    def __init__(self, ratings=None):
+    """Per-mode buckets (Unit.key).  Rooms are 2 sides x 2 slots, built from units:
+         4 solos            -> shuffle: 2 random pairs (ranked: the most even split by MMR/level)
+         team + 2 solos     -> fixed pair vs an instant pair of solos
+         team + team        -> pair vs pair
+       After FILL_AFTER seconds the oldest waiter may get a short-handed room (>= 2 humans, e.g. 1v1, 2v1);
+       empty seats are expected to be CPU-controlled by the cabinets [L - open question for a live test].
+       group_id is decided by the server: the client only derives "same team as the first listed client"."""
+    def __init__(self, ratings=None, fill_after=FILL_AFTER, partial=True, seed=None):
+        import random
         self.lock = threading.Lock()
-        self.by_node = {}      # node_id -> Team (every human node of a team points to it)
-        self.queue = []        # waiting teams, FIFO
+        self.by_node = {}      # node_id -> Unit (every human node of a unit points to it)
+        self.queue = []        # waiting units, FIFO
         self.rooms = {}        # room_id -> {'groups': {0: am_ids, 1: am_ids}, 'world':, 'at':}
         self.next_room = 1
         self.ratings = ratings
+        self.fill_after, self.partial = fill_after, partial
+        self.rng = random.Random(seed)
 
     def entry(self, e, now):
-        t = Team(e, now, self.ratings)
+        t = Unit(e, now, self.ratings)
         with self.lock:
             self._sweep(now)
             # A partner cabinet may send its own entry naming the leader as its group: merge.
@@ -175,8 +240,9 @@ class Matchmaker:
             for n in t.node_ids(): self.by_node[n] = t
             self.queue.append(t)
             self._try_match(now)
-        log.info('entry team=%s key=%s ranked=%s level=%s mmr=%.0f seq=%s mk_room=%s queue=%d',
-                 sorted(t.node_ids()), t.key, t.ranked, t.level, t.mmr, t.seq_num, t.create_room, len(self.queue))
+        log.info('entry %s unit=%s slots=%d humans=%d key=%s level=%s mmr=%.0f seq=%s mk_room=%s queue=%d',
+                 t.wname, sorted(t.node_ids()), t.slots, len(t.humans()), t.key, t.level, t.mmr,
+                 t.seq_num, t.create_room, len(self.queue))
         return SUCCESS
 
     def check(self, node_id, now):
@@ -185,7 +251,7 @@ class Matchmaker:
             t = self.by_node.get(node_id)
             if t is None: return ERR_MATCH_NOENTRY, None
             t.last_seen = now
-            if t.room is None: self._try_match(now)                   # ranked bands widen with time
+            if t.room is None: self._try_match(now)                   # bands widen / fill timer runs with time
             if t.room: return SUCCESS, t.room
             if now - t.created > t.timeout:
                 self._drop(t); return MATCH_CANCELED, None            # game falls back (CPU battle) [M]
@@ -205,23 +271,64 @@ class Matchmaker:
         return self.ratings.update(r['groups'][winner_group], r['groups'][1 - winner_group]) if self.ratings else 0.0
 
     # -- internals (lock held) --
+    def _score(self, sides, idx, short):
+        """Lower is better.  Ranked: even sides by MMR + level spread.  Casual: FIFO + soft attr2."""
+        units = sides[0] + sides[1]
+        order = sum(idx[id(u)] for u in units)
+        if units[0].ranked:
+            mm = lambda s: sum(u.mmr * u.slots for u in s) / max(1, sum(u.slots for u in s))
+            lv = [u.level for u in units]
+            return (abs(mm(sides[0]) - mm(sides[1])) + (max(lv) - min(lv)) * 1000, order)
+        softs = {u.soft for u in units if u.soft is not None}
+        return (max(0, len(softs) - 1) * 100 + order, self.rng.random())  # random split = shuffle
+
+    def _best_room(self, anchor, pool, idx, now, short):
+        import itertools
+        best = None
+        for r in range(1, min(3, len(pool)) + 1):
+            for combo in itertools.combinations(pool, r):
+                units = [anchor] + list(combo)
+                slots = sum(u.slots for u in units)
+                if short:
+                    if slots >= 2 * TEAM_SLOTS or sum(len(u.humans()) for u in units) < 2: continue
+                elif slots != 2 * TEAM_SLOTS:
+                    continue
+                if any(not a.compatible(b, now) for a, b in itertools.combinations(units, 2)): continue
+                for sides in side_splits(units):
+                    s = (-slots if short else 0,) + self._score(sides, idx, short)
+                    if best is None or s < best[0]: best = (s, sides)
+        return best[1] if best else None
+
     def _try_match(self, now):
-        i = 0
-        while i < len(self.queue):
-            a = self.queue[i]
-            cands = [j for j in range(i + 1, len(self.queue)) if a.compatible(self.queue[j], now)]
-            if not cands: i += 1; continue
-            j = min(cands, key=lambda j: a.distance(self.queue[j])) if a.ranked else cands[0]
-            b = self.queue.pop(j); self.queue.pop(i)
-            room_id = self.next_room; self.next_room += 1
-            clients = [{'group_id': 0, 'client': c} for c in a.clients] + \
-                      [{'group_id': 1, 'client': c} for c in b.clients]
-            room = {'room_id': room_id, 'clients': clients, 'at': now}
-            a.room = dict(room, apply_id=a.apply_id); b.room = dict(room, apply_id=b.apply_id)
-            self.rooms[room_id] = {'groups': {0: sorted(a.am_ids()), 1: sorted(b.am_ids())},
-                                   'world': a.world, 'at': now}
-            log.info('MATCH room=%d world=%s %s(lv%s,%.0f) vs %s(lv%s,%.0f)', room_id, a.world,
-                     sorted(a.node_ids()), a.level, a.mmr, sorted(b.node_ids()), b.level, b.mmr)
+        made = True
+        while made:
+            made = False
+            buckets = {}
+            for u in self.queue: buckets.setdefault(u.key, []).append(u)
+            for units in buckets.values():
+                idx = {id(u): i for i, u in enumerate(units)}
+                for i, a in enumerate(units):
+                    pool = [u for u in units[i + 1:] if a.compatible(u, now)][:POOL_MAX]
+                    sides = self._best_room(a, pool, idx, now, short=False)
+                    if not sides and self.partial and now - a.created >= self.fill_after:
+                        sides = self._best_room(a, pool, idx, now, short=True)
+                    if sides:
+                        self._make_room(sides, now); made = True; break
+                if made: break
+
+    def _make_room(self, sides, now):
+        room_id = self.next_room; self.next_room += 1
+        clients = [{'group_id': g, 'client': c} for g in (0, 1) for u in sides[g] for c in u.clients]
+        room = {'room_id': room_id, 'clients': clients, 'at': now}
+        for g in (0, 1):
+            for u in sides[g]:
+                self.queue.remove(u); u.room = dict(room, apply_id=u.apply_id)
+        self.rooms[room_id] = {'groups': {g: sorted(set().union(*[u.am_ids() for u in sides[g]])) for g in (0, 1)},
+                               'world': sides[0][0].world, 'at': now,
+                               'humans': sum(len(u.humans()) for s in sides for u in s)}
+        desc = lambda s: '+'.join('%s%s' % ('T' if u.team else 'S', sorted(u.node_ids())) for u in s)
+        log.info('MATCH room=%d %s %s vs %s (humans=%d/4)', room_id, sides[0][0].wname,
+                 desc(sides[0]), desc(sides[1]), self.rooms[room_id]['humans'])
 
     def _drop(self, t):
         if t in self.queue: self.queue.remove(t)
@@ -234,6 +341,9 @@ class Matchmaker:
             elif t.room and now - t.room['at'] > MATCHED_KEEP: self._drop(t)
         for rid in [r for r, v in self.rooms.items() if now - v['at'] > 3600]:
             del self.rooms[rid]
+
+
+Team = Unit   # backwards-compatible name
 
 
 class Mms:
@@ -318,10 +428,13 @@ def main():
     ap.add_argument('--host', default='0.0.0.0'); ap.add_argument('--port', type=int, default=5000)
     ap.add_argument('--state', default='mms_state.json'); ap.add_argument('--ratings', default='mms_ratings.json')
     ap.add_argument('--result-token', default=os.environ.get('MMS_RESULT_TOKEN'))
+    ap.add_argument('--fill-after', type=float, default=FILL_AFTER,
+                    help='seconds before a short-handed room (1v1, 2v1) may be formed')
+    ap.add_argument('--no-partial', action='store_true', help='only ever form full 4-human-slot rooms')
     ap.add_argument('-v', action='store_true')
     a = ap.parse_args()
     logging.basicConfig(level=logging.DEBUG if a.v else logging.INFO, format='%(asctime)s %(name)s %(message)s')
-    mms = Mms(NodeIdAllocator(a.state), Matchmaker(RatingStore(a.ratings)))
+    mms = Mms(NodeIdAllocator(a.state), Matchmaker(RatingStore(a.ratings), a.fill_after, not a.no_partial))
     srv = ThreadingHTTPServer((a.host, a.port), make_handler(mms, a.result_token))
     log.info('listening on http://%s:%d/mms', a.host, a.port)
     srv.serve_forever()

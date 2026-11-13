@@ -102,3 +102,6 @@ See `ranked-matching.md`. Ranked = EntryMatching with world_id 13 (solo) / 14 (t
 {2: class_id, 4: matching level}. The prototype now keys ranked queues by class, pairs the closest level/MMR with a
 widening band, and keeps an optional hidden Elo fed by `POST /result` from the card server. Visible class/grade/rate
 are computed by the client and must be persisted by the card server (SaveVsmOnResult → PreLoadCard.LoadPlayer).
+
+## Addendum 2026-11-13: casual / shuffle
+See casual-shuffle-matching.md. Key points: the server alone decides teams via group_id. Solo-sortie entries have no groups and are shuffled server-side. Team-sortie entries carry the partner ("Y") or CPU ("N"). Per-mode buckets are keyed by world_id (+attr2 shop/settings/class). Short-handed rooms after a fill timer are untested in game.

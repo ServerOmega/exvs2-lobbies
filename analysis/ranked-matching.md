@@ -187,3 +187,5 @@ The client already sends the pair's class (max) in attr2 and level in attr4, so 
 * `server-sketch/python/pbwire.py` — fix: packed repeated fields decoded before scalar handling.
 Box test 2026-11-13: 6 ranked cabinets `2:3,3:3,2:5,3:3,2:3,2:5` → pairs (2:3,2:3), (3:3,3:3), (2:5,2:5);
 `2:1` vs `2:3` matched after 35 s widening; casual 4-cabinet test still passes. **Not tested with the game.**
+
+> **Correction (casual-shuffle-matching.md §3/§5):** Class Match solo entries (code 0x0a, world 13) carry **no** groups and no CPU stand-in. The server forms 2v2 rooms by shuffling 4 solos into group_ids. Only team entries (0x0b, world 14) carry a partner/CPU group. mms_server.py now does this.

@@ -15,7 +15,10 @@ Quick test (any Linux box):
 cd python && python3 mms_server.py --port 5000 -v &
 python3 fake_cabinet.py --url http://127.0.0.1:5000/mms --cabinets 4
 ```
-Design: `../analysis/matchmaking-server-design.md`.
+Design: `../analysis/matchmaking-server-design.md`. Casual/shuffle: `../analysis/casual-shuffle-matching.md`.
+* Casual (shuffle/mix/in-store/custom buckets): `python3 test_casual.py` and
+  `python3 fake_cabinet.py --units S,S,S,S --world 23` (S solo, T team+human partner, TN team+CPU; `--same-loc --attr2 N` for in-store 15/16).
+  Server options `--fill-after SEC` (short-handed 1v1/2v1 rooms after SEC, untested in game) and `--no-partial`.
 
 Notes from RE 2026-11-13 (see `../analysis/matchmaking.md` §7):
 * Cabinet must have `battleMode: 0` in its active setting entry to use MMS at all.
