@@ -1,0 +1,23 @@
+# Game binaries — never commit the client or any Bandai/game files
+binaries/
+*.exe
+*.dll
+
+# RE caches and Python junk
+*.pkl
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+tools/venv/
+
+# Card / launcher config (may contain ChipId, AccessCode, BootToken)
+*.ini
+SnowLauncher.ini
+config.ini
+lmnfig.ini
+
+# Editor / OS
+.DS_Store
+*.swp

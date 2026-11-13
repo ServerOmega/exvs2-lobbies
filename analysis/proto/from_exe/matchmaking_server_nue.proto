@@ -1,0 +1,209 @@
+// Extracted from vsac29_Release.exe (EXVS2 Infinite Boost V29)
+// Serialized FileDescriptorProto at file offset 0x1924d20 (4115 bytes, proto2).
+// Original compiled unit: matchmaking_server_nue.pb.cc (package nue.protocol.mms).
+// NOTE (2026-11-13): restored verbatim from the earlier session transcript after the
+// box project folder was lost; content identical to the original extraction.
+
+syntax = "proto2";
+
+package nue.protocol.mms;
+
+enum SystemConstant {
+  PROTOBUF_MESSAGE_REVISION = 6;
+  PROCESS_WAIT_POLING_INTERVAL = 3;
+}
+
+enum ErrorCode {
+  SUCCESS = 0;
+  MATCH_CANCELED = 1;
+  PROCESS_WAIT = 2;
+  ERR_REQUEST = 100;
+  ERR_SERVER = 101;
+  ERR_MAINTENANCE = 102;
+  ERR_MATCH_NOENTRY = 103;
+  ERR_NODEID = 200;
+  ERR_MATCH_CONDITION = 201;
+  ERR_DUPLICATE_ENTRY = 202;
+  ERR_UNDEFINED = 999;
+}
+
+enum MethodType {
+  PING = 0;
+  ISSUE_NODE_ID = 1;
+  ENTRY_MATCHING = 2;
+  CHECK_MATCHING = 3;
+  CANCEL_MATCHING = 4;
+  MATCHING_SETTING = 100;
+}
+
+enum ParameterType {
+  TYPE_NUMBER = 0;
+  TYPE_FLAG = 1;
+}
+
+enum Expression {
+  EXPR_EQ = 0;
+  EXPR_NE = 1;
+  EXPR_LT = 2;
+  EXPR_LE = 3;
+  EXPR_GT = 4;
+  EXPR_GE = 5;
+  EXPR_BW = 6;
+}
+
+enum LogicalOperator {
+  LOGIC_AND = 0;
+  LOGIC_OR = 1;
+}
+
+enum Relative {
+  RLT_ABSOLUTE = 0;
+  RLT_RELATIVE = 1;
+}
+
+enum NatMappingType {
+  NM_NONE = 0;
+  NM_ENDPOINT_INDEPENDENT = 1;
+  NM_ADDRESS_DEPENDENT = 2;
+  NM_ADDRESS_AND_PORT_DEPENDENT = 3;
+}
+
+enum NatFilteringType {
+  NF_NONE = 0;
+  NF_ENDPOINT_INDEPENDENT = 1;
+  NF_ADDRESS_DEPENDENT = 2;
+  NF_ADDRESS_AND_PORT_DEPENDENT = 3;
+}
+
+enum NatAllocationPolicy {
+  NA_NONE = 0;
+  NA_PORT_PRESERVATION = 1;
+  NA_PORT_CONTIGUITY = 2;
+  NA_RANDOM = 3;
+}
+
+message Request {
+  required nue.protocol.mms.MethodType type = 1;
+  required string request_id = 2;
+  optional nue.protocol.mms.Request.Ping ping = 100;
+  optional nue.protocol.mms.Request.IssueNodeId issue_node_id = 101;
+  optional nue.protocol.mms.Request.EntryMatching entry_matching = 102;
+  optional nue.protocol.mms.Request.CheckMatching check_matching = 103;
+  optional nue.protocol.mms.Request.CancelMatching cancel_matching = 104;
+  optional nue.protocol.mms.Request.MatchingSetting matching_setting = 200;
+  message Ping {
+  }
+  message IssueNodeId {
+    required string pcb_serial = 1;
+    required string loc_id = 2;
+    required uint32 issue_at = 3;
+    optional uint32 issue_count = 4 [default = 1];
+  }
+  message EntryMatching {
+    required uint32 apply_id = 1;
+    required nue.protocol.mms.Client myclient = 2;
+    required nue.protocol.mms.Player myplayer = 3;
+    optional nue.protocol.mms.World world = 4;
+    repeated nue.protocol.mms.Request.EntryMatching.Group groups = 5;
+    required uint32 matching_timeout = 7;
+    optional uint32 seq_num = 8;
+    optional uint32 create_room_flag = 9 [default = 1];
+    required uint32 entry_at = 10;
+    repeated uint32 bl_banapassport_am_ids = 11;
+    repeated string bl_loc_ids = 12;
+    message Group {
+      required nue.protocol.mms.Client client = 2;
+      required nue.protocol.mms.Player player = 3;
+    }
+  }
+  message CheckMatching {
+    required uint32 node_id = 1;
+    required uint32 check_at = 2;
+  }
+  message CancelMatching {
+    required uint32 node_id = 1;
+    required uint32 apply_id = 2;
+    required uint32 cancel_at = 3;
+  }
+  message MatchingSetting {
+    required uint32 user_id = 1;
+    required nue.protocol.mms.World world = 2;
+    repeated nue.protocol.mms.Request.MatchingSetting.Condition conditions = 3;
+    message Condition {
+      required uint32 attribute_id = 1;
+      required nue.protocol.mms.ParameterType type = 2;
+      required sint64 parameter = 3;
+      required nue.protocol.mms.Expression expr_id = 4;
+      required bool relative = 5;
+    }
+  }
+}
+
+message Response {
+  required nue.protocol.mms.MethodType type = 1;
+  required string request_id = 2;
+  required nue.protocol.mms.ErrorCode code = 3 [default = ERR_SERVER];
+  optional nue.protocol.mms.Response.Ping ping = 100;
+  optional nue.protocol.mms.Response.IssueNodeId issue_node_id = 101;
+  optional nue.protocol.mms.Response.EntryMatching entry_matching = 102;
+  optional nue.protocol.mms.Response.CheckMatching check_matching = 103;
+  optional nue.protocol.mms.Response.CancelMatching cancel_matching = 104;
+  optional nue.protocol.mms.Response.MatchingSetting matching_setting = 200;
+  message Ping {
+  }
+  message IssueNodeId {
+    repeated uint32 node_id = 1;
+  }
+  message EntryMatching {
+    required uint32 poling_interval = 1;
+    required uint32 apply_id = 2;
+  }
+  message CheckMatching {
+    optional uint32 room_id = 1;
+    optional uint32 apply_id = 2;
+    repeated nue.protocol.mms.Response.CheckMatching.MatchedClient clients = 3;
+    message MatchedClient {
+      required uint32 group_id = 1;
+      required nue.protocol.mms.Client client = 2;
+    }
+  }
+  message CancelMatching {
+  }
+  message MatchingSetting {
+  }
+}
+
+message Client {
+  required uint32 node_id = 1;
+  required string pcb_serial = 2;
+  required string loc_id = 3;
+  optional string subnet_id = 4;
+  required uint32 pref_code = 5;
+  optional string global_ipaddress = 6;
+  optional uint32 global_port = 7;
+  optional string local_ipaddress = 8;
+  optional uint32 local_port = 9;
+  required nue.protocol.mms.NatMappingType nat_mapping_type = 100;
+  required nue.protocol.mms.NatFilteringType nat_filtering_type = 101;
+  optional nue.protocol.mms.NatAllocationPolicy nat_allocation_policy = 102 [default = NA_NONE];
+  repeated nue.protocol.mms.Client.Property property = 200;
+  message Property {
+    required uint32 property_id = 1;
+    required string property_value = 2;
+  }
+}
+
+message Player {
+  required uint32 banapassport_am_id = 1;
+  repeated nue.protocol.mms.Player.Parameter parameters = 2;
+  message Parameter {
+    required uint32 attribute_id = 1;
+    required sint64 parameter = 2;
+  }
+}
+
+message World {
+  required string mucha_game_id = 1;
+  required uint32 version = 2;
+  required uint32 world_id = 3;
+}
