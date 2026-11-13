@@ -157,7 +157,7 @@ python3 server-sketch/loadtest/lm_mix.py --url http://127.0.0.1:5000/mms
 | Blocker | Why | Workaround |
 |---|---|---|
 | Cabinet on an LM LAN battleMode (≠ 0) | takes the in-store path, never calls the MMS [C] | set `battleMode: 0` for online play (on the LM's pushed settings for store cabinets [L]). In-store LAN play still works through the LM in other setting entries / time slots [M] |
-| Overlay (Radmin/Hamachi/ZeroTier) players vs internet players | an overlay STUN result is only reachable on the overlay | one STUN path for everybody: **internet STUN + each cabinet bound to its real NIC** (overlay only for the LM LAN), or **everybody on one overlay with the STUN host on it**. A TURN relay might bridge both, but whether the game uses relayed addresses is not traced [L] (networking-issues.md §6.1) |
+| Overlay (Radmin/Hamachi/ZeroTier) players vs internet players | an overlay STUN result is only reachable on the overlay | one STUN path for everybody: **internet STUN with the overlay only for the LM link** (POC `DisableSocketHook = true`, VPN carries only its subnet; binding to the real NIC loses the LM; see [lm-over-vpn-split.md](lm-over-vpn-split.md)), or **everybody on one overlay with the STUN host on it**. A TURN relay might bridge both, but whether the game uses relayed addresses is not traced [L] (networking-issues.md §6.1) |
 | In-store match across stores | the cabinet sends a shop hash; in-store is per shop by design | use the online modes (casual / mix / ranked) for cross-store play. If the POC loc_id really is fixed, in-store mode already pools every POC player together [M] |
 | Two symmetric-NAT / CGNAT players | hole punching fails | port-forward UDP 48000(+terminal), or an overlay with relays |
 
@@ -177,3 +177,6 @@ python3 server-sketch/loadtest/lm_mix.py --url http://127.0.0.1:5000/mms
 * In-store match stays per shop. **Answered, implemented (§3.4).**
 * Where battleMode is set in a store setup: **open**, to find out in the first real test (§6 step 0).
 * Does a store have more than one public IP? If yes, add it to `ShopKeys`.
+* Can a cabinet reach its LM over a VPN while online traffic uses the internet? **Probably yes** with Radmin VPN / ZeroTier
+  (`DisableSocketHook = true`, VPN carries only its own subnet, LM-discovery broadcast sent out on the VPN); not over Tailscale
+  (no broadcast). Exe analysis and a test setup: [lm-over-vpn-split.md](lm-over-vpn-split.md). **Open** until tested.

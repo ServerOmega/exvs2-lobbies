@@ -25,6 +25,11 @@ Everything here is **untested in the real game**. Tick items off as they're veri
 - [ ] Real game: two players on different networks with the default serial both match (no "same cabinet entered again" in the log)
 - [ ] Real game: store pair vs online players: MATCH-NET shows `local same-NAT` for the pair and the battle starts
 - [x] Box: IP/NAT log lines on both servers (`NET`, `NET-WARN`, `MATCH-NET`, drop reasons). Unit tests plus a smoke run with fake cabinets and documentation IPs
+- [ ] Real game, LM over VPN + online over internet ([analysis/lm-over-vpn-split.md](analysis/lm-over-vpn-split.md) §3): cabinet with POC `DisableSocketHook = true`, `InterfaceName` = VPN adapter, VPN without default route (`route print -4`). Does it boot past Find LM / Connect LM? If not, capture `udp.port == 49000` on the VPN adapter (broadcast leaving? LM reply?) and retry with the VPN adapter's metric set to 1
+- [ ] Real game, same setup: `NET entry` shows `local` = VPN IP, `global` = the internet public IP, realm `internet`; a match against a home (no-VPN) player starts and finishes
+- [ ] Real game, same setup: during an online battle, is any traffic sent to the LM's VPN IP? Does a 30 s VPN outage drop the match?
+- [ ] Real game: two cabinets of one LM in the same online room (same NAT) dial each other's VPN IP (`MATCH-NET` local same-NAT); battle starts
+- [ ] Real game: LM over Tailscale (no broadcast). Expected to fail at Find LM; confirm
 - [ ] Play modes 1–6 land in separate queues; `battleMode` values other than 0 still use the LM path
 
 ## Casual / shuffle
