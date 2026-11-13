@@ -13,7 +13,7 @@ The goal is a large shared player pool, beyond the Live Monitor (LM) store model
 
 This project builds on ideas from [asesidaa/EXVS2-POC](https://github.com/asesidaa/EXVS2-POC)
 (community card/game server). It is **not affiliated with Bandai Namco**. No game files are
-included. You must already own the game; this repo is notes, analysis, and server sketches only.
+included. You must already have a copy of the game; this repo is notes, analysis, and server sketches only.
 
 ## Current status
 
