@@ -1,0 +1,2385 @@
+// Extracted from vsac29_Release.exe: serialized FileDescriptorProto at file offset 0x13c8d70 (60724 bytes).
+// Rendered by tools/re/desc2proto.py on 2026-11-13. Package nue.protocol.exvs (card/game server RPC, X-Nue-Protobuf-Revision 141).
+syntax = "proto2";
+
+package nue.protocol.exvs;
+
+enum SystemConstant {
+  PROTOBUF_MESSAGE_REVISION = 141;
+}
+
+enum MethodType {
+  MTHD_REGISTER_PCB = 1;
+  MTHD_REGISTER_PCB_ACK = 2;
+  MTHD_SAVE_INSIDE_DATA = 3;
+  MTHD_LOAD_GAME_DATA = 4;
+  MTHD_LOAD_RANK_MATCH = 5;
+  MTHD_LOAD_CLASS_MATCH = 6;
+  MTHD_PRE_LOAD_CARD = 100;
+  MTHD_LOAD_CARD = 101;
+  MTHD_REGISTER_CARD = 102;
+  MTHD_SAVE_VSM_RESULT = 200;
+  MTHD_SAVE_VSM_ON_RESULT = 201;
+  MTHD_SAVE_VSC_RESULT = 203;
+  MTHD_SAVE_VST_RESULT = 204;
+  MTHD_SAVE_VSM_TO_RESULT = 205;
+  MTHD_SAVE_PRACTICE_RESULT = 206;
+  MTHD_SAVE_STAGE_RESULT = 207;
+  MTHD_SAVE_CHARGE = 210;
+  MTHD_SAVE_MEDAL = 211;
+  MTHD_SAVE_BATTLE_LOG = 220;
+  MTHD_SAVE_BATTLE_LOG_ON = 221;
+  MTHD_SAVE_USER_PLAY_RESEARCH_DATA = 223;
+  MTHD_SAVE_RESULT_CAPTURE = 224;
+  MTHD_SAVE_FAILED_BATTLE_LOG_ON = 225;
+  MTHD_CHECK_COMMUNICATION = 300;
+  MTHD_LOAD_ACCESS_CODE = 303;
+  MTHD_USE_P_COIN_TICKET = 305;
+  MTHD_REGISTER_OPTION = 306;
+  MTHD_LOAD_SPOT_INFO = 400;
+  MTHD_LOAD_RANKING = 401;
+  MTHD_CHECK_TELOP = 402;
+  MTHD_LOAD_TELOP = 403;
+  MTHD_CHECK_MOVIE_RELEASE = 404;
+  MTHD_LOAD_SPOT_URL = 405;
+  MTHD_LOAD_REPLAY_CARD = 406;
+  MTHD_PRE_SAVE_REPLAY = 407;
+  MTHD_LOAD_MEETING_CARD = 409;
+  MTHD_SAVE_TOURNAMENT_RESULT = 410;
+  MTHD_LOAD_BLACK_LIST = 416;
+  MTHD_START_TOURNAMENT = 417;
+  MTHD_LOAD_ROOM = 418;
+  MTHD_REGISTER_ROOM = 419;
+  MTHD_PING = 500;
+  MTHD_CHECK_TIME = 501;
+  MTHD_SAVE_LOG = 502;
+  MTHD_CHECK_RESOURCE_DATA = 503;
+}
+
+enum Error {
+  SUCCESS = 0;
+  ERR_REQUEST = 1;
+  ERR_SERVER = 2;
+  ERR_SERVICE_SUSPEND = 3;
+  ERR_USER_LOCKED = 4;
+  ERR_TOKEN_EXPIRE = 5;
+}
+
+enum AcidError {
+  ACID_SUCCESS = 0;
+  ACID_NO_USE = 1;
+  ACID_SERVER_ERROR = 2;
+  ACID_AUTHENTIC_ERROR = 3;
+  ACID_FORBIDDEN = 4;
+}
+
+enum PcbType {
+  PCB_CABINET = 0;
+  PCB_LIVE_MONITOR = 1;
+  PCB_SUB_LIVE_MONITOR = 2;
+}
+
+enum ServerType {
+  SRV_STUN = 0;
+  SRV_TURN = 1;
+  SRV_MATCH = 2;
+}
+
+enum ResourceDataType {
+  RSRC_PROMOTION_VIDEO_1 = 1;
+  RSRC_PROMOTION_VIDEO_2 = 2;
+  RSRC_MAKER_INFORMATION = 3;
+  RSRC_MOBILE_INFORMATION = 4;
+  RSRC_REPLAY = 5;
+  RSRC_ONLINE_INFORMATION = 6;
+}
+
+enum DownloadStatus {
+  DL_STARTED = 1;
+  DL_DOWNLOADING = 2;
+  DL_COMPLETE = 3;
+  DL_WAITING = 4;
+  DL_HTTP_ERROR = 5;
+  DL_CLIENT_ERROR = 6;
+  DL_DATA_ERROR = 7;
+  DL_UNKNOWN = 8;
+}
+
+enum OnlineLineType {
+  ONLINET_SOLO = 0;
+  ONLINET_PAIR_LEADER = 1;
+  ONLINET_PAIR_MEMBER = 2;
+  ONLINET_SOLO_WITH_CPU = 3;
+  ONLINET_ONTAG_PAIR_LEADER = 4;
+  ONLINET_ONTAG_PAIR_MEMBER = 5;
+}
+
+enum UdpHpResultType {
+  UDPHP_SUCCESS = 0;
+  UDPHP_FAIL_CANCELED_MYSELF = 1;
+  UDPHP_FAIL_CANCELED_SOMEONE = 2;
+  UDPHP_FAIL_TIMEOUT = 3;
+  UDPHP_FAIL_TIMEOUT_NO_PACKETS = 4;
+  UDPHP_FAIL_RTT_OUT_OF_LIMIT = 5;
+  UDPHP_FAIL_OTHERS = 6;
+  UDPHP_NONE = 7;
+}
+
+enum ChargeType {
+  CHRG_PLAY = 1;
+  CHRG_RENTAL = 2;
+  CHRG_EXTRA = 3;
+  CHRG_RESERVE = 4;
+}
+
+enum MedalMode {
+  MEDAL_LOAD = 1;
+  MEDAL_NORMAL = 2;
+  MEDAL_PLUS_COIN = 3;
+  MEDAL_REVENGE = 4;
+  MEDAL_CONTINUE = 5;
+  MEDAL_RESERVE = 6;
+  MEDAL_LOCATION = 7;
+}
+
+enum GameMode {
+  GMODE_NONE = 0;
+  GMODE_TRAINING = 1;
+  GMODE_TRAIAD = 2;
+}
+
+enum RunningMode {
+  MODE_NORMAL_LOCAL = 1;
+  MODE_NORMAL_ONLINE = 2;
+  MODE_EVENT = 3;
+  MODE_MEET = 4;
+  MODE_RENTAL = 5;
+  MODE_STORE = 6;
+}
+
+enum TeamMode {
+  TEAM_NONE = 0;
+  TEAM_LOCAL_SOLO = 1;
+  TEAM_LOCAL_TEAM = 2;
+  TEAM_ONLINE_SOLO_OR_TEAM = 3;
+  TEAM_LOCAL_HOLD = 4;
+}
+
+enum CommandMessagePostion {
+  CMP_CENTER = 0;
+  CMP_LEFT = 1;
+}
+
+enum OnlineMatchingMode {
+  OMM_CLASS = 0;
+  OMM_FREE = 1;
+  OMM_LOCAL = 2;
+  OMM_LOCATION = 3;
+  OMM_FES = 4;
+  OMM_PRIVATE = 5;
+  OMM_PUB = 6;
+  OMM_EVENT = 7;
+}
+
+enum TrainingMode {
+  TM_NONE = 0;
+  TM_ON_CNT = 1;
+  TM_ON = 2;
+}
+
+enum RankMessageType {
+  MS_MONTHLY_COUNTRY_PLAYER_MS_USED = 4646;
+  LM_MONTHLY_COUNTRY_CLASS_MATCH = 18991;
+  LM_MONTHLY_COUNTRY_TAG_CLASS_MATCH = 18992;
+  MS_MONTHLY_COUNTRY_CLASS_MATCH = 21039;
+  MS_MONTHLY_COUNTRY_TAG_CLASS_MATCH = 21040;
+  LM_MONTHLY_COUNTRY_TOP_POINT_SOLO = 18993;
+  LM_MONTHLY_COUNTRY_TOP_POINT_TEAM = 18994;
+  MS_MONTHLY_COUNTRY_TOP_POINT_SOLO = 21041;
+  MS_MONTHLY_COUNTRY_TOP_POINT_TEAM = 21042;
+  CMN_WEEKLY_COUNTRY_MS_USED = 24869;
+  CMN_WEEKLY_COUNTRY_MS_USED3000 = 41253;
+  CMN_WEEKLY_COUNTRY_MS_USED2500 = 74021;
+  CMN_WEEKLY_COUNTRY_MS_USED2000 = 139557;
+  CMN_WEEKLY_COUNTRY_MS_USED1500 = 270629;
+  MS_WEEKLY_DISTRICT_MS_USED = 20805;
+  MS_WEEKLY_DISTRICT_MS_USED3000 = 37189;
+  MS_WEEKLY_DISTRICT_MS_USED2500 = 69957;
+  MS_WEEKLY_DISTRICT_MS_USED2000 = 135493;
+  MS_WEEKLY_DISTRICT_MS_USED1500 = 266565;
+  LM_MONTHLY_SPOT_PLAYER_SCORE = 19085;
+  MS_MONTHLY_SPOT_PLAYER_SCORE = 21133;
+  LM_MONTHLY_COUNTRY_ROUTE_BATTLE_SCORE = 18995;
+  LM_MONTHLY_COUNTRY_ROUTE_BATTLE_TIME = 35379;
+  MS_MONTHLY_COUNTRY_ROUTE_BATTLE_SCORE = 21171;
+  MS_MONTHLY_COUNTRY_ROUTE_BATTLE_TIME = 37555;
+  LM_MONTHLY_COUNTRY_GROUP_POINT = 18996;
+  MS_MONTHLY_COUNTRY_GROUP_POINT = 21044;
+  LM_MONTHLY_SPOT_GROUP_POINT = 19092;
+  MS_MONTHLY_SPOT_GROUP_POINT = 21140;
+}
+
+enum RankBaseType {
+  MS_USED = 5;
+  PLAYER_MS_USED = 6;
+  PLAYER_SCORE = 13;
+  TAG_PLAYER_SCORE = 14;
+  CLASS_MATCH = 15;
+  TAG_CLASS_MATCH = 16;
+  TOP_POINT_SOLO = 17;
+  TOP_POINT_TEAM = 18;
+  ROUTE_BATTLE = 19;
+  GROUP_POINT = 20;
+}
+
+enum RankAreaType {
+  COUNTRY = 32;
+  DISTRICT = 64;
+  SPOT = 128;
+}
+
+enum RankSpanType {
+  WEEKLY = 256;
+  MONTHLY = 512;
+  SEASON = 1024;
+}
+
+enum RankUseType {
+  LIVE = 2048;
+  MOBILE = 4096;
+  COMMON = 8192;
+}
+
+enum RankDetailType {
+  TYPE1 = 16384;
+  TYPE2 = 32768;
+  TYPE3 = 65536;
+  TYPE4 = 131072;
+  TYPE5 = 262144;
+  TYPE6 = 524288;
+}
+
+message AcidResponse {
+  required nue.protocol.exvs.AcidError acid_error = 1;
+  required uint32 acid_result = 2;
+  optional nue.protocol.exvs.AcidResponse.AcidCardDetail acid_card_detail = 3;
+  optional nue.protocol.exvs.AcidResponse.AcidAccdDetail acid_accd_detail = 4;
+  message AcidCardDetail {
+    optional uint32 mb_id = 1 [default = 0];
+    required uint32 am_id = 2;
+    optional string access_code = 3;
+    required uint32 publish_flag = 4;
+    required uint32 having_card_num = 5;
+    required string registed_country_name_code = 6;
+    optional uint32 purpose_id = 7;
+    optional uint32 region_id = 8;
+  }
+  message AcidAccdDetail {
+    required uint32 am_id = 1;
+    required string access_code = 2;
+    required uint32 is_am_id = 3;
+  }
+}
+
+message UnfittedLocationGroup {
+  required string loc_id = 1;
+  required uint32 rtt = 2;
+}
+
+message MatchingTag {
+  required uint32 id = 1;
+  required string tag_name = 2;
+  required uint32 tag_type = 3;
+  required uint32 matching_type = 4;
+  required uint64 end_date = 5;
+  required uint32 matching_attribute = 6;
+  repeated uint32 selectable_ms_id = 7;
+  optional uint32 rule_type = 8;
+  optional bool revenge_flag = 9;
+  optional uint32 timer = 10;
+  optional uint32 world_id = 11;
+  optional uint32 fes_rule_type = 12;
+  optional bool randomstage_only_flag = 13;
+}
+
+message AdversaryManGroup {
+  required uint32 pilot_id = 1;
+  required uint32 cpu_flag = 2;
+  required uint32 mst_mobile_suit_id = 3;
+  required uint32 down_num = 4;
+  required uint32 player_level_id = 5;
+  required uint32 badge_id = 6;
+  required uint32 skill_point = 9;
+  required string loc_id = 10;
+  required uint32 burst_type = 11;
+  repeated nue.protocol.exvs.WarSituationGroup battle_log = 12;
+  optional uint32 class_id = 13;
+  required uint32 skin_id = 14;
+  optional uint32 grade_id = 15;
+}
+
+message WarSituationGroup {
+  required uint32 frame = 1;
+  required uint32 status = 2;
+}
+
+message NetworkReport {
+  repeated nue.protocol.exvs.NetworkReport.NetworkReportPcbData pcb_data = 1;
+  required uint32 battle_pad_input_delay_frame = 2;
+  required uint32 battle_start_delay_frame = 3;
+  required uint32 delay_src_flag = 4;
+  required uint32 total_posed_frame = 5;
+  required uint32 total_posed_num = 6;
+  message NetworkReportPcbData {
+    required string pcb_serial = 1;
+    required string loc_id = 2;
+    required uint32 rtt = 3;
+    required float packet_lost_rate = 4;
+    required uint32 max_rtt = 5;
+  }
+}
+
+message TagTeamGroup {
+  required uint32 id = 1;
+  required string name = 2;
+  required uint32 partner_id = 3;
+  required uint32 tag_status = 13;
+  optional uint32 group_tag_point = 14;
+  optional uint32 partner_player_level_id = 15;
+  optional uint32 partner_badge_id = 16;
+  optional uint32 partner_class_id = 17;
+  optional uint32 partner_grade_id = 18;
+  optional string partner_name = 19;
+  optional bool on_compe_flag = 20;
+}
+
+message LoadPlayer {
+  required uint32 pilot_id = 1;
+  optional uint64 last_played_at = 2;
+  required uint32 total_win = 3;
+  required uint32 total_lose = 4;
+  required uint32 player_level_id = 5;
+  repeated nue.protocol.exvs.TagTeamGroup tag_teams = 6;
+  required uint32 badge_id = 7;
+}
+
+message TitleCustomize {
+  required uint32 title_text_id = 1;
+  optional string custom_text = 2;
+}
+
+message QuickStartInfo {
+  required uint32 game_mode = 1;
+  optional uint32 rule_type = 2;
+  required uint32 team_type = 3;
+  required uint32 mst_mobile_suit_id_0 = 4;
+  required uint32 burst_type_0 = 5;
+  optional uint32 mst_mobile_suit_id_1 = 6;
+  optional uint32 burst_type_1 = 7;
+  required uint32 stage_id = 8;
+}
+
+message GpuHealthCheckReport {
+  required uint32 peak_temperature = 1;
+  required uint32 throttling_count = 2;
+  required uint32 throttling_duration_seconds = 3;
+  required uint32 insufficient_power_count = 4;
+}
+
+message Request {
+  required nue.protocol.exvs.MethodType type = 1;
+  required string request_id = 2;
+  required string pcb_serial = 3;
+  required string loc_id = 4;
+  optional uint32 am_id = 5;
+  required string token = 6;
+  optional nue.protocol.exvs.Request.RegisterPcb register_pcb = 1001;
+  optional nue.protocol.exvs.Request.RegisterPcbAck register_pcb_ack = 1002;
+  optional nue.protocol.exvs.Request.SaveInsideData save_inside_data = 1003;
+  optional nue.protocol.exvs.Request.LoadGameData load_game_data = 1004;
+  optional nue.protocol.exvs.Request.LoadRankMatch load_rank_match = 1005;
+  optional nue.protocol.exvs.Request.LoadClassMatch load_class_match = 1006;
+  optional nue.protocol.exvs.Request.PreLoadCard pre_load_card = 1100;
+  optional nue.protocol.exvs.Request.LoadCard load_card = 1101;
+  optional nue.protocol.exvs.Request.RegisterCard register_card = 1102;
+  optional nue.protocol.exvs.Request.SaveVsmResult save_vsm_result = 1200;
+  optional nue.protocol.exvs.Request.SaveVsmOnResult save_vsm_on_result = 1201;
+  optional nue.protocol.exvs.Request.SaveVscResult save_vsc_result = 1203;
+  optional nue.protocol.exvs.Request.SaveVstResult save_vst_result = 1204;
+  optional nue.protocol.exvs.Request.SaveVsmToResult save_vsm_to_result = 1205;
+  optional nue.protocol.exvs.Request.SavePracticeResult save_practice_result = 1206;
+  optional nue.protocol.exvs.Request.SaveStageResult save_stage_result = 1207;
+  optional nue.protocol.exvs.Request.SaveCharge save_charge = 1210;
+  optional nue.protocol.exvs.Request.SaveMedal save_medal = 1211;
+  optional nue.protocol.exvs.Request.SaveBattleLog save_battle_log = 1220;
+  optional nue.protocol.exvs.Request.SaveBattleLogOn save_battle_log_on = 1221;
+  optional nue.protocol.exvs.Request.SaveUserPlayResearchData save_user_play_research_data = 1223;
+  optional nue.protocol.exvs.Request.SaveResultCapture save_result_capture = 1224;
+  optional nue.protocol.exvs.Request.SaveFailedBattleLogOn save_failed_battle_log_on = 1225;
+  optional nue.protocol.exvs.Request.CheckCommunication check_communication = 1300;
+  optional nue.protocol.exvs.Request.UsePCoinTicket use_p_coin_ticket = 1305;
+  optional nue.protocol.exvs.Request.RegisterOption register_option = 1306;
+  optional nue.protocol.exvs.Request.LoadSpotInfo load_spot_info = 1400;
+  optional nue.protocol.exvs.Request.LoadRanking load_ranking = 1401;
+  optional nue.protocol.exvs.Request.CheckTelop check_telop = 1402;
+  optional nue.protocol.exvs.Request.LoadTelop load_telop = 1403;
+  optional nue.protocol.exvs.Request.CheckMovieRelease check_movie_release = 1404;
+  optional nue.protocol.exvs.Request.LoadSpotUrl load_spot_url = 1405;
+  optional nue.protocol.exvs.Request.LoadReplayCard load_replay_card = 1406;
+  optional nue.protocol.exvs.Request.PreSaveReplay pre_save_replay = 1407;
+  optional nue.protocol.exvs.Request.LoadMeetingCard load_meeting_card = 1409;
+  optional nue.protocol.exvs.Request.SaveTournamentResult save_tournament_result = 1410;
+  optional nue.protocol.exvs.Request.LoadBlackList load_black_list = 1416;
+  optional nue.protocol.exvs.Request.StartTournament start_tournament = 1417;
+  optional nue.protocol.exvs.Request.LoadRoom load_room = 1418;
+  optional nue.protocol.exvs.Request.RegisterRoom register_room = 1419;
+  optional nue.protocol.exvs.Request.Ping ping = 1500;
+  optional nue.protocol.exvs.Request.CheckTime check_time = 1501;
+  optional nue.protocol.exvs.Request.SaveLog save_log = 1502;
+  optional nue.protocol.exvs.Request.CheckResourceData check_resource_data = 1503;
+  message RegisterPcb {
+    required nue.protocol.exvs.PcbType pcb_type = 1;
+    required string loc_name = 2;
+    required string loc_nick = 3;
+    required uint32 pref_code = 4;
+    required string addr0 = 5;
+    required string addr1 = 6;
+    required string addr2 = 7;
+    required string addr3 = 8;
+    required string loc_id = 9;
+    required string country_code = 10;
+    required string game_id = 11;
+    required string game_ver = 12;
+    required string disk_ver = 13;
+    repeated nue.protocol.exvs.Request.RegisterPcb.CoreDumpInfo core_dump_info = 14;
+    optional bool start_up_flag = 15;
+    optional string local_ip_address = 16;
+    optional uint32 board_u_param = 17;
+    message CoreDumpInfo {
+      required string file_name = 1;
+      required uint64 created_date = 2;
+    }
+  }
+  message RegisterPcbAck {
+  }
+  message SaveInsideData {
+    required string pcb_serial = 1;
+    required string loc_id = 2;
+    required nue.protocol.exvs.PcbType pcb_type = 3;
+    optional bool game_pad_flag = 4;
+    optional nue.protocol.exvs.Request.SaveInsideData.ClosingType closing_type = 5;
+    optional uint32 closing_time_hour = 6;
+    optional uint32 closing_time_minute = 7;
+    optional nue.protocol.exvs.Request.SaveInsideData.MenuSelection menu_selection = 8;
+    optional nue.protocol.exvs.Request.SaveInsideData.ScheduleSwitch schedule_switch = 10;
+    repeated nue.protocol.exvs.Request.SaveInsideData.ConfigPatternSettings config_pattern_settings = 11;
+    repeated nue.protocol.exvs.Request.SaveInsideData.Config configurations = 12;
+    optional uint32 pcb_uptime = 13;
+    optional uint32 local_replay_view_count = 14;
+    optional uint32 replay_filter_count = 15;
+    optional uint32 tournament_replay_view_count = 16;
+    optional uint32 all_replay_view_count = 17;
+    optional uint32 special_replay_view_count = 18;
+    optional uint32 previous_rank_display_count = 19;
+    optional uint32 ranking_view_count = 20;
+    optional uint32 info_display_count = 21;
+    repeated nue.protocol.exvs.Request.SaveInsideData.MonitorParameter monitor_parameter = 23;
+    optional bool cabinet_type = 24;
+    optional uint32 my_replay_upload_count = 25;
+    optional uint32 my_replay_view_count = 26;
+    optional uint32 cmode_replay_count = 27;
+    optional uint32 cmode_live_count = 28;
+    enum ClosingType {
+      CLOSING_NONE = 0;
+      CLOSING_DAY = 1;
+      CLOSING_WEEK = 2;
+    }
+    enum MenuSelection {
+      MENU_ON = 0;
+      MENU_OFF = 1;
+    }
+    enum ScheduleSwitch {
+      SWITCH_ON = 0;
+      SWITCH_OFF = 1;
+    }
+    message ConfigPatternSettings {
+      required nue.protocol.exvs.Request.SaveInsideData.ConfigPatternSettings.Day day = 1;
+      required uint32 first_config_num = 2;
+      optional uint32 second_config_num = 3;
+      optional uint32 third_config_num = 4;
+      optional uint32 first_switch_time = 5;
+      optional uint32 second_switch_time = 6;
+      enum Day {
+        MONDAY = 0;
+        TUESDAY = 1;
+        WEDNESDAY = 2;
+        THURSDAY = 3;
+        FRIDAY = 4;
+        SATURDAY = 5;
+        SUNDAY = 6;
+      }
+    }
+    message Config {
+      optional uint32 config_num = 1;
+      optional uint32 start_cost = 2;
+      optional uint32 continue_cost = 3;
+      optional uint32 pluscoin_cost = 4;
+      repeated nue.protocol.exvs.Request.SaveInsideData.Config.ConfigGroup config_groups = 6;
+      message ConfigGroup {
+        optional uint32 config_group_num = 1;
+        optional uint32 number_of_connected_boards = 2;
+        optional nue.protocol.exvs.RunningMode running_mode = 3;
+        optional nue.protocol.exvs.TeamMode team_mode = 4;
+        optional nue.protocol.exvs.TrainingMode training_mode = 5;
+        optional bool cpu_mode = 6;
+        optional bool stage_select_flag = 7;
+      }
+    }
+    message MonitorParameter {
+      required uint32 resolution_width = 1;
+      required uint32 resolution_height = 2;
+      required float refreshRate = 3;
+    }
+  }
+  message LoadGameData {
+    required string disk_ver = 1;
+  }
+  message LoadRankMatch {
+    required string disk_ver = 1;
+  }
+  message LoadClassMatch {
+    required string disk_ver = 1;
+  }
+  message PreLoadCard {
+    required bool is_card = 1;
+    optional string access_code = 2;
+    required string chip_id = 3;
+    required string mucha_country_code = 4;
+  }
+  message LoadCard {
+    required string session_id = 1;
+    required uint32 pilot_id = 2;
+    optional bool guest_nav_anniv_flag = 3;
+    optional bool ex_tutorial_disp_flag = 4;
+  }
+  message RegisterCard {
+    required string session_id = 1;
+    required bool is_card = 2;
+    optional string access_code = 3;
+    required string chip_id = 4;
+    required string mucha_country_code = 5;
+    optional bool tutorial_play_flag = 6;
+  }
+  message SaveVsmResult {
+    required uint32 pilot_id = 1;
+    required string session_id = 2;
+    required bool shuffle_flag = 3;
+    required nue.protocol.exvs.Request.SaveVsmResult.PlayResultGroup result = 4;
+    required nue.protocol.exvs.GpuHealthCheckReport gpu_health_check_report = 5;
+    message PlayResultGroup {
+      required uint64 played_at = 1;
+      required bool win_flag = 2;
+      required uint32 revenge_num = 3;
+      required uint32 vs_elapsed_time = 4;
+      required uint32 stage_id = 5;
+      required uint32 selected_stage_id = 6;
+      required uint32 mst_mobile_suit_id = 7;
+      required uint32 skill_point_mobile_suit_id = 8;
+      required uint32 result_score = 9;
+      required uint32 downed_num = 10;
+      required uint32 consecutive_win = 11;
+      required bool no_damage_flag = 12;
+      required bool complete_down_flag = 13;
+      required bool perfect_win_flag = 14;
+      required bool great_win_flag = 15;
+      required bool complete_defeat_flag = 16;
+      required uint32 level_id = 17;
+      required uint32 player_level_id = 18;
+      required uint32 level_exp = 20;
+      required uint32 result_order = 22;
+      optional uint32 tag_team_id = 23;
+      required uint32 guest_nav_id = 24;
+      required uint32 guest_nav_familiarity = 25;
+      required uint32 guest_nav_costume_used = 26;
+      required uint32 burst_type = 29;
+      required uint32 given_damage = 30;
+      required uint32 taken_damage = 31;
+      required uint32 burst = 32;
+      required uint32 overheat = 33;
+      required uint32 combo_given_damage = 34;
+      optional nue.protocol.exvs.AdversaryManGroup partner = 35;
+      repeated nue.protocol.exvs.AdversaryManGroup foes = 36;
+      required uint32 burst_given_damage = 38;
+      required uint32 timer = 39;
+      required bool war_situation_flag = 40;
+      repeated nue.protocol.exvs.WarSituationGroup player_battle_log = 41;
+      required uint32 link_num = 42;
+      required uint32 cover_num = 43;
+      required uint32 guard_num = 44;
+      required uint32 ex_burst_xross_num = 45;
+      required bool rental_mode_flag = 46;
+      required bool local_priority_match_flag = 47;
+      required bool time_rental_flag = 48;
+      optional bool guest_nav_boost_flag = 50;
+      required uint32 skin_id = 52;
+      optional nue.protocol.exvs.QuickStartInfo quick_start_info = 53;
+      optional int32 group_tag_point = 54;
+      optional int32 group_id = 55;
+      required bool overlimit_flag = 56;
+      required uint32 overlimit_given_damage = 57;
+      required bool one_on_one_flag = 58;
+    }
+  }
+  message SaveVsmOnResult {
+    required uint32 pilot_id = 1;
+    required string session_id = 2;
+    required bool shuffle_flag = 3;
+    required nue.protocol.exvs.Request.SaveVsmOnResult.PlayResultGroup result = 4;
+    repeated nue.protocol.exvs.UnfittedLocationGroup unfitted_locs = 5;
+    required nue.protocol.exvs.NetworkReport network_report = 6;
+    required nue.protocol.exvs.GpuHealthCheckReport gpu_health_check_report = 7;
+    message PlayResultGroup {
+      required uint64 played_at = 1;
+      required bool win_flag = 2;
+      required uint32 revenge_num = 3;
+      required uint32 vs_elapsed_time = 4;
+      required uint32 stage_id = 5;
+      required uint32 selected_stage_id = 6;
+      required uint32 mst_mobile_suit_id = 7;
+      required uint32 skill_point_mobile_suit_id = 8;
+      required uint32 result_score = 9;
+      required uint32 downed_num = 10;
+      required uint32 consecutive_win = 11;
+      required bool no_damage_flag = 12;
+      required bool complete_down_flag = 13;
+      required bool perfect_win_flag = 14;
+      required bool great_win_flag = 15;
+      required bool complete_defeat_flag = 16;
+      required uint32 level_id = 17;
+      required uint32 player_level_id = 18;
+      required uint32 badge_id = 19;
+      required uint32 level_exp = 20;
+      required uint32 result_order = 23;
+      optional uint32 tag_team_id = 24;
+      required uint32 guest_nav_id = 27;
+      required uint32 guest_nav_familiarity = 28;
+      required uint32 guest_nav_costume_used = 29;
+      required uint32 burst_type = 32;
+      required bool ten_consecutive_win_flag = 33;
+      required uint32 given_damage = 34;
+      required uint32 taken_damage = 35;
+      required uint32 burst = 36;
+      required uint32 overheat = 37;
+      required uint32 combo_given_damage = 38;
+      optional nue.protocol.exvs.AdversaryManGroup partner = 39;
+      repeated nue.protocol.exvs.AdversaryManGroup foes = 40;
+      optional nue.protocol.exvs.MatchingTag matching_tag = 41;
+      required uint32 room_id = 43;
+      required uint32 burst_given_damage = 44;
+      required uint32 timer = 47;
+      required bool war_situation_flag = 48;
+      repeated nue.protocol.exvs.WarSituationGroup player_battle_log = 49;
+      required uint32 link_num = 50;
+      required uint32 cover_num = 51;
+      required uint32 guard_num = 52;
+      required uint32 ex_burst_xross_num = 55;
+      required nue.protocol.exvs.OnlineMatchingMode online_matching_mode = 56;
+      optional nue.protocol.exvs.Request.SaveVsmOnResult.PlayResultGroup.ClassMatchResult class_match_result = 57;
+      optional uint32 mobile_user_id = 58;
+      required bool instant_team_flag = 59;
+      optional uint32 xross_fes_rule_type = 60;
+      required bool partner_recruit_flag = 61;
+      required bool time_rental_flag = 62;
+      optional bool guest_nav_boost_flag = 64;
+      required uint32 skin_id = 66;
+      optional nue.protocol.exvs.Request.SaveVsmOnResult.PlayResultGroup.ThrowGameInfo throw_game_info = 67;
+      optional uint32 sleep_sec = 68;
+      required sint32 obtained_badge_point = 69;
+      optional nue.protocol.exvs.QuickStartInfo quick_start_info = 70;
+      optional int32 group_tag_point = 71;
+      optional int32 group_id = 72;
+      required bool overlimit_flag = 73;
+      required uint32 overlimit_given_damage = 74;
+      required bool one_on_one_flag = 75;
+      optional nue.protocol.exvs.Request.SaveVsmOnResult.PlayResultGroup.OnCompeResult on_compe_result = 76;
+      message ClassMatchResult {
+        required uint32 class_id_solo = 1;
+        required uint32 class_id_team = 2;
+        required float before_rate = 3;
+        required float after_rate = 4;
+        required float obtained_rate = 5;
+        required uint32 grade_id = 6;
+      }
+      message ThrowGameInfo {
+        repeated uint32 cond_1_numbers = 1;
+        repeated uint32 cond_2_numbers = 2;
+      }
+      message OnCompeResult {
+        required uint32 before_oncompe_point = 1;
+        required uint32 after_oncompe_point = 2;
+        required uint32 before_partner_oncompe_point = 3;
+        required uint32 before_foe1_oncompe_point = 4;
+        required uint32 before_foe2_oncompe_point = 5;
+      }
+    }
+  }
+  message SaveVscResult {
+    required uint32 pilot_id = 1;
+    required string session_id = 2;
+    required nue.protocol.exvs.Request.SaveVscResult.PlayResultGroup result = 3;
+    message PlayResultGroup {
+      required uint64 played_at = 1;
+      required uint32 stage_num = 2;
+      required uint32 phase_num = 3;
+      required uint32 battle_type = 4;
+      required uint32 difficulty = 5;
+      required bool win_flag = 6;
+      required uint32 vs_elapsed_time = 7;
+      required uint32 before_gauge = 8;
+      required uint32 after_gauge = 9;
+      required uint32 mst_mobile_suit_id = 10;
+      required uint32 scene_id = 11;
+      required uint32 scene_score = 12;
+      required uint32 level_id = 13;
+      required uint32 player_level_id = 14;
+      required uint32 level_exp = 15;
+      required uint32 guest_nav_id = 16;
+      required uint32 guest_nav_familiarity = 17;
+      required uint32 guest_nav_costume_used = 18;
+      optional uint32 group_id = 19;
+      required uint32 burst_type = 20;
+      optional nue.protocol.exvs.Request.SaveVscResult.PlayResultGroup.AdversaryCpuGroupPartner partner = 21;
+      optional bool guest_nav_boost_flag = 22;
+      required bool time_rental_flag = 23;
+      optional nue.protocol.exvs.QuickStartInfo quick_start_info = 24;
+      required sint32 obtained_badge_point = 25;
+      required bool one_on_one_flag = 26;
+      repeated uint32 battle_option = 27;
+      message AdversaryCpuGroupPartner {
+        required uint32 pilot_id = 1;
+        required uint32 player_level_id = 2;
+        required bool cpu_flag = 3;
+        required uint32 mst_mobile_suit_id = 4;
+        required bool mobile_set_flag = 5;
+      }
+    }
+  }
+  message SaveVstResult {
+    required string session_id = 1;
+    required uint32 pilot_id = 2;
+    required uint32 player_level_id = 3;
+    optional uint32 last_mobile_suit_id = 5;
+    optional uint32 last_burst_type = 6;
+    optional uint32 cpu_level = 7;
+    optional uint32 ex_burst_gauge = 8;
+    optional bool damage_display = 9;
+    required uint32 menu_opened_num = 10;
+    required uint32 change_num = 11;
+    required uint32 change_foe_num = 12;
+    required nue.protocol.exvs.Request.SaveVstResult.PlayResultGroup result = 13;
+    optional bool cpu_auto_guard = 14;
+    optional uint32 command_guide_display = 15;
+    optional uint32 training_type = 16;
+    optional uint32 player_no = 17;
+    optional uint32 partner_mobile_suit_id = 18;
+    required bool time_rental_flag = 19;
+    optional nue.protocol.exvs.QuickStartInfo quick_start_info = 20;
+    optional uint32 armor = 21;
+    optional bool cpu_auto_heal = 22;
+    optional bool ex_over_limit = 23;
+    optional bool fast_reload = 24;
+    required uint32 quick_menu_num = 25;
+    message PlayResultGroup {
+      required uint64 played_at = 1;
+      required uint32 continue_num = 3;
+      required uint32 max_damage = 5;
+      required uint32 my_mobile_suit_id = 6;
+      required uint32 my_burst_type = 7;
+      required uint32 enemy_mobile_suit_id = 8;
+      required uint32 enemy_burst_type = 9;
+    }
+  }
+  message SaveVsmToResult {
+    required uint32 pilot_id = 1;
+    required string session_id = 2;
+    required bool shuffle_flag = 3;
+    required nue.protocol.exvs.Request.SaveVsmToResult.PlayResultGroup result = 4;
+    message PlayResultGroup {
+      required uint64 played_at = 1;
+      required string loc_id = 2;
+      required uint32 tournament_id = 3;
+      required uint32 round_num = 4;
+      required uint32 round_sequence = 5;
+      required uint32 best_of_two = 6;
+      required uint32 vs_num = 7;
+      required bool win_flag = 8;
+      required uint32 vs_elapsed_time = 9;
+      required uint32 stage_id = 10;
+      required uint32 selected_stage_id = 11;
+      required uint32 mst_mobile_suit_id = 12;
+      required uint32 result_score = 13;
+      required uint32 downed_num = 14;
+      required bool no_damage_flag = 15;
+      required bool complete_down_flag = 16;
+      required bool perfect_win_flag = 17;
+      required bool great_win_flag = 18;
+      required bool complete_defeat_flag = 19;
+      required uint32 result_order = 20;
+      required uint32 tag_team_id = 21;
+      required uint32 guest_nav_id = 22;
+      required uint32 guest_nav_familiarity = 23;
+      required uint32 guest_nav_costume_used = 24;
+      required uint32 burst_type = 29;
+      required uint32 given_damage = 30;
+      required uint32 taken_damage = 31;
+      required uint32 burst = 32;
+      required uint32 overheat = 33;
+      required uint32 combo_given_damage = 34;
+      required uint32 burst_given_damage = 35;
+      required nue.protocol.exvs.Request.SaveVsmToResult.PlayResultGroup.AdversaryToManGroup partner = 36;
+      repeated nue.protocol.exvs.Request.SaveVsmToResult.PlayResultGroup.AdversaryToManGroup foes = 37;
+      required uint32 player_level_id = 38;
+      required uint32 timer = 40;
+      required bool war_situation_flag = 41;
+      repeated nue.protocol.exvs.WarSituationGroup player_battle_log = 42;
+      required uint32 ex_burst_xross_num = 43;
+      required uint32 skin_id = 44;
+      message AdversaryToManGroup {
+        required uint32 pilot_id = 1;
+        required uint32 mst_mobile_suit_id = 2;
+        required uint32 down_num = 3;
+        required uint32 player_level_id = 4;
+        required uint32 badge_id = 5;
+        required uint32 skill_point = 6;
+        required uint32 burst_type = 7;
+        repeated nue.protocol.exvs.WarSituationGroup battle_log = 8;
+        required uint32 skin_id = 9;
+      }
+    }
+  }
+  message SavePracticeResult {
+    required uint32 pilot_id = 1;
+    required string session_id = 2;
+    required nue.protocol.exvs.Request.SavePracticeResult.PlayResultGroup result = 3;
+    message PlayResultGroup {
+      required uint64 played_at = 1;
+      required bool win_flag = 2;
+      optional bool course_clear_flag = 3;
+      required uint32 vs_elapsed_time = 4;
+      required uint32 mst_mobile_suit_id = 5;
+      required uint32 skill_point_mobile_suit_id = 6;
+      required uint32 scene_seq = 7;
+      required uint32 scene_difficulty = 8;
+      optional uint32 course_score = 9;
+      required uint32 scene_score = 10;
+      optional uint32 total_given_damage = 11;
+      optional uint32 total_defeat_num = 12;
+      optional uint32 total_ex_burst = 13;
+      optional uint32 total_rocked_on = 14;
+      optional uint32 total_taken_damage = 15;
+      optional bool all_s_flag = 16;
+      required uint32 level_id = 17;
+      required uint32 player_level_id = 18;
+      required uint32 level_exp = 19;
+      optional uint32 group_id = 20;
+      required uint32 guest_nav_id = 21;
+      required uint32 guest_nav_familiarity = 22;
+      optional bool guest_nav_boost_flag = 23;
+      required uint32 guest_nav_costume_used = 24;
+      required uint32 burst_type = 25;
+      optional nue.protocol.exvs.Request.SavePracticeResult.PlayResultGroup.AdversaryCpuGroupPartner partner = 26;
+      required bool time_rental_flag = 27;
+      optional nue.protocol.exvs.QuickStartInfo quick_start_info = 28;
+      message AdversaryCpuGroupPartner {
+        required uint32 pilot_id = 1;
+        required uint32 cpu_flag = 2;
+        required uint32 mst_mobile_suit_id = 3;
+        optional uint32 burst_type = 4;
+        required uint32 player_level_id = 5;
+        optional uint32 class_id = 6;
+      }
+    }
+  }
+  message SaveStageResult {
+    required uint32 pilot_id = 1;
+    required string session_id = 2;
+    required nue.protocol.exvs.Request.SaveStageResult.PlayResultGroup result = 3;
+    message PlayResultGroup {
+      required uint64 played_at = 1;
+      required uint32 difficulty = 2;
+      required uint32 stage_num = 3;
+      required bool stage_clear_flag = 4;
+      optional uint32 stage_clear_time = 5;
+      optional uint32 stage_clear_score = 6;
+      required uint32 cp_bonus = 7;
+      required uint32 gauge_bonus = 8;
+      required uint32 time_bonus = 9;
+      required uint32 score = 10;
+      required uint32 elite_win_bonus = 11;
+      required uint32 progress = 12;
+      required uint32 normal_win_num = 13;
+      required uint32 elite_win_num = 14;
+      required uint32 boss_win_num = 15;
+      required uint32 before_gauge = 16;
+      required uint32 after_gauge = 17;
+      optional bool final_stage_clear_flag = 18;
+      optional uint32 total_clear_time = 19;
+      optional uint32 total_clear_score = 20;
+      required bool time_rental_flag = 21;
+      required uint32 mst_mobile_suit_id = 22;
+      required uint32 partner_mobile_suit_id = 23;
+      required uint32 partner_pilot_id = 24;
+      required bool cpu_flag = 25;
+      optional nue.protocol.exvs.Request.SaveStageResult.PlayResultGroup.SaveDataInfo save_data_info = 26;
+      message SaveDataInfo {
+        required uint32 pattern_id = 1;
+        required uint32 difficulty = 2;
+        required uint32 stage_num = 3;
+        required uint32 boss_id_1 = 4;
+        optional uint32 boss_id_2 = 5;
+        required uint32 max_gauge = 6;
+        repeated uint32 custom_chip_ids = 7;
+      }
+    }
+  }
+  message SaveCharge {
+    repeated nue.protocol.exvs.Request.SaveCharge.ChargeData charge_data = 1;
+    message ChargeData {
+      required uint32 index = 1;
+      required string pcb_serial = 2;
+      required string charge_loc_id = 3;
+      required uint64 played_at = 4;
+      required nue.protocol.exvs.ChargeType charge_type = 5;
+      required uint32 amount = 6;
+    }
+  }
+  message SaveMedal {
+    required bool is_card = 1;
+    optional string access_code = 2;
+    required string chip_id = 3;
+    required string mucha_country_code = 4;
+    required nue.protocol.exvs.MedalMode medal_mode = 5;
+    required uint64 grant_at = 6;
+    required uint32 medal = 7;
+  }
+  message SaveBattleLog {
+    required string session_id = 1;
+    required nue.protocol.exvs.Request.SaveBattleLog.BattleLogGroup battle_log = 2;
+    message BattleLogGroup {
+      required uint32 pcb_id = 1;
+      required uint32 revenge_num = 2;
+      required nue.protocol.exvs.GameMode game_mode = 3;
+      required uint32 stage_id = 4;
+      repeated nue.protocol.exvs.Request.SaveBattleLog.BattleLogGroup.PilotGroup pilots = 5;
+      required bool local_priority_match_flag = 6;
+      required uint32 scene_id = 7;
+      message PilotGroup {
+        required bool is_human = 1;
+        required uint32 player_type = 2;
+        required uint32 pilot_id = 3;
+        required uint32 player_level_id = 4;
+        required uint32 consecutive_win = 5;
+        required uint32 mst_mobile_suit_id = 6;
+        required uint32 burst_type = 7;
+      }
+    }
+  }
+  message SaveBattleLogOn {
+    required string session_id = 1;
+    required nue.protocol.exvs.Request.SaveBattleLogOn.BattleLogGroup battle_log = 2;
+    message BattleLogGroup {
+      required uint32 pcb_id = 1;
+      required uint32 stage_id = 2;
+      repeated nue.protocol.exvs.Request.SaveBattleLogOn.BattleLogGroup.PilotGroup pilots = 3;
+      required uint32 revenge_num = 4;
+      required nue.protocol.exvs.OnlineMatchingMode online_matching_mode = 5;
+      message PilotGroup {
+        required bool is_human = 1;
+        required uint32 player_type = 2;
+        required uint32 pilot_id = 3;
+        required uint32 player_level_id = 4;
+        required uint32 online_vs_type = 5;
+        required uint32 consecutive_win = 6;
+        required uint32 mst_mobile_suit_id = 7;
+        required uint32 burst_type = 8;
+        optional uint32 class_id = 9;
+        optional uint32 oncompe_point = 10;
+      }
+    }
+  }
+  message SaveUserPlayResearchData {
+    required uint32 pcb_id = 1;
+    required uint64 play_time = 2;
+    required uint32 pilot_id = 3;
+    required string session_id = 4;
+    required uint32 player_level_id = 5;
+    required uint32 badge_id = 6;
+    required uint32 consective_win = 7;
+    required uint32 mode = 8;
+    required bool is_online_tag = 9;
+    required bool is_tag_formed = 10;
+    required uint32 play_times = 11;
+    optional uint32 charge_type = 12;
+    required uint32 play_type = 13;
+    required nue.protocol.exvs.GameMode game_mode = 14;
+    required nue.protocol.exvs.RunningMode running_mode = 15;
+    required nue.protocol.exvs.TeamMode team_mode = 16;
+    required uint32 vs_game_time = 17;
+    required bool is_game_pad_used = 18;
+    required uint32 user_id = 19;
+    required bool instant_team_flag = 21;
+    required bool team_dissolution_flag = 22;
+    required bool forced_termination_flag = 23;
+    required uint32 result_capture_num = 24;
+    required bool headphone_flag = 25;
+    optional nue.protocol.exvs.OnlineMatchingMode online_matching_mode = 26;
+    optional uint32 class_id_solo = 29;
+    optional uint32 class_id_team = 30;
+    required uint32 matching_request_num = 31;
+    required uint32 matching_success_num = 32;
+    required bool partner_recruit_flag = 33;
+    optional uint32 training_type = 34;
+    required uint32 friend_register_num = 35;
+    required uint32 ng_register_num = 36;
+    optional uint32 rental_back_num = 37;
+    optional uint32 maker_color_id = 38;
+  }
+  message SaveResultCapture {
+    required uint32 pilot_id = 1;
+    required string session_id = 2;
+    required uint64 played_at = 3;
+    required string loc_id = 4;
+    required bool paid = 5;
+    required uint32 mode = 6;
+    repeated uint32 capture_type = 7;
+    repeated nue.protocol.exvs.Request.SaveResultCapture.TournamentPilots tournament_pilots = 8;
+    message TournamentPilots {
+      required uint32 capture_type = 1;
+      repeated uint32 pilot_id = 2;
+    }
+  }
+  message SaveFailedBattleLogOn {
+    required uint32 pilot_id = 1;
+    required uint64 played_at = 2;
+    required uint64 room_id = 3;
+    required bool my_fault_flag = 4;
+    required nue.protocol.exvs.OnlineMatchingMode online_matching_mode = 5;
+    required string loc_id = 6;
+    repeated nue.protocol.exvs.Request.SaveFailedBattleLogOn.PilotGroup pilots = 7;
+    message PilotGroup {
+      required uint32 pilot_id = 1;
+      required string loc_id = 2;
+      required bool my_fault_flag = 3;
+    }
+  }
+  message CheckCommunication {
+    required uint64 start_date = 1;
+    required uint64 end_date = 2;
+    required uint32 skill_point_mobile_suit_id = 3;
+    required uint32 pilot_id = 4;
+    required nue.protocol.exvs.OnlineLineType line_type = 5;
+    required uint32 apply_id = 6;
+    required uint32 matching_try_num = 7;
+    required nue.protocol.exvs.Request.CheckCommunication.StunResult stun_result = 8;
+    required bool found_player_flag = 9;
+    required nue.protocol.exvs.UdpHpResultType udp_hp_result = 10;
+    repeated nue.protocol.exvs.Request.CheckCommunication.OtherPlayerInfo players = 11;
+    optional uint32 class_id = 12;
+    optional uint32 level_id = 13;
+    optional uint32 matching_rank_free = 14;
+    optional uint32 matching_rank_fes = 15;
+    message StunResult {
+      required nue.protocol.exvs.Request.CheckCommunication.StunResult.NatMappingType nat_mapping_type = 1;
+      required nue.protocol.exvs.Request.CheckCommunication.StunResult.NatFilteringType nat_filtering_type = 2;
+      enum NatMappingType {
+        NM_NONE = 0;
+        NM_ENDPOINT_INDEPENDENT = 1;
+        NM_ADDRESS_DEPENDENT = 2;
+        NM_ADDRESS_AND_PORT_DEPENDENT = 3;
+      }
+      enum NatFilteringType {
+        NF_NONE = 0;
+        NF_ENDPOINT_INDEPENDENT = 1;
+        NF_ADDRESS_DEPENDENT = 2;
+        NF_ADDRESS_AND_PORT_DEPENDENT = 3;
+      }
+    }
+    message OtherPlayerInfo {
+      required string loc_id = 1;
+      required string pcb_serial = 2;
+      required uint32 skill_point_mobile_suit_id = 3;
+      required uint32 pilot_id = 4;
+      required uint32 rtt = 5;
+      optional uint32 class_id = 6;
+      optional uint32 level_id = 7;
+      optional uint32 matching_rank_free = 8;
+      optional uint32 matching_rank_fes = 9;
+    }
+  }
+  message UsePCoinTicket {
+    required uint32 pilot_id = 1;
+    required string session_id = 2;
+  }
+  message RegisterOption {
+    required uint32 mobile_user_id = 1;
+    optional uint32 friend_pilot_id = 2;
+    optional uint32 ng_pilot_id = 3;
+  }
+  message LoadSpotInfo {
+  }
+  message LoadRanking {
+    required nue.protocol.exvs.RankMessageType rank_type = 1;
+    required bool current_flag = 2;
+    required uint64 timestamp = 3;
+  }
+  message CheckTelop {
+  }
+  message LoadTelop {
+    required uint32 telop_id = 1;
+  }
+  message CheckMovieRelease {
+    repeated uint32 movie_ids = 1;
+  }
+  message LoadSpotUrl {
+    required bool password_reissue = 1;
+  }
+  message LoadReplayCard {
+    required bool is_card = 1;
+    optional string access_code = 2;
+    required string chip_id = 3;
+    required string mucha_country_code = 4;
+  }
+  message PreSaveReplay {
+    required uint32 replay_size = 1;
+    required uint64 played_at = 2;
+    required uint32 stage_id = 3;
+    repeated nue.protocol.exvs.Request.PreSaveReplay.PilotGroup pilots = 4;
+    required bool special_flag = 5;
+    required bool replay_service_flag = 6;
+    required uint32 mobile_user_id = 7;
+    required uint32 matching_mode = 8;
+    required uint32 team_type = 9;
+    required bool return_match_flag = 10;
+    optional uint32 tournament_id = 11;
+    required uint32 battle_class = 12;
+    message PilotGroup {
+      required uint32 pilot_id = 1;
+      required uint32 mst_mobile_suit_id = 2;
+      required string player_name = 3;
+      required uint32 class_id = 4;
+      required uint32 player_level_id = 5;
+      required uint32 badge_id = 6;
+      required bool win_flag = 7;
+      required uint32 consecutive_win = 8;
+      required bool cpu_flag = 9;
+      required uint32 skin_id = 10;
+      required uint32 top_point_rank = 11;
+      required uint32 top_point_rank_num = 12;
+      required uint32 grade_id = 13;
+    }
+  }
+  message LoadMeetingCard {
+    required bool is_card = 1;
+    optional string access_code = 2;
+    required string chip_id = 3;
+    required string mucha_country_code = 4;
+  }
+  message SaveTournamentResult {
+    required nue.protocol.exvs.Request.SaveTournamentResult.TournamentResultGroup result = 1;
+    repeated nue.protocol.exvs.Request.SaveTournamentResult.UserResultGroup rank_result = 2;
+    message TournamentResultGroup {
+      required uint64 opened_at = 1;
+      required uint64 expired_at = 2;
+      required uint32 tournament_type = 3;
+      required uint32 best_of_two = 4;
+      required uint32 mc = 5;
+      required uint32 entrant_num = 6;
+      required uint32 tournament_id = 7;
+      required uint32 limit_member_num = 8;
+    }
+    message UserResultGroup {
+      required uint32 pilot_id = 1;
+      required uint32 rank = 2;
+    }
+  }
+  message LoadBlackList {
+  }
+  message StartTournament {
+  }
+  message LoadRoom {
+    required bool is_card = 1;
+    optional string access_code = 2;
+    required string chip_id = 3;
+    required string mucha_country_code = 4;
+  }
+  message RegisterRoom {
+    required uint32 pilot_id = 1;
+    required uint32 room_id = 2;
+    required uint32 tag_type = 3;
+  }
+  message Ping {
+    required uint64 request_at = 1;
+  }
+  message CheckTime {
+  }
+  message SaveLog {
+    required uint32 rtt = 1;
+    required uint32 request_count = 2;
+    required uint32 timeout_count = 3;
+    required uint32 play_count = 4;
+    required uint32 load_card_success_count = 5;
+    required uint32 load_card_fail_count = 6;
+    required uint32 icon_off_count = 7;
+    required uint32 est_sock_num = 8;
+    required uint32 not_est_sock_num = 9;
+    required uint64 time = 10;
+    repeated nue.protocol.exvs.Request.SaveLog.RequestLogGroup logs = 11;
+    message RequestLogGroup {
+      required nue.protocol.exvs.MethodType type = 1;
+      required uint32 request = 2;
+      required uint32 timed_out = 3;
+      required uint32 retry_max_reached = 4;
+      required uint32 response_average = 5;
+    }
+  }
+  message CheckResourceData {
+    required nue.protocol.exvs.ResourceDataType resource_type = 1;
+    optional uint32 replay_id = 2;
+  }
+}
+
+message Response {
+  required nue.protocol.exvs.MethodType type = 1;
+  required string request_id = 2;
+  required nue.protocol.exvs.Error error = 20 [default = ERR_SERVER];
+  optional string error_msg = 21;
+  optional nue.protocol.exvs.Response.RegisterPcb register_pcb = 1001;
+  optional nue.protocol.exvs.Response.RegisterPcbAck register_pcb_ack = 1002;
+  optional nue.protocol.exvs.Response.SaveInsideData save_inside_data = 1003;
+  optional nue.protocol.exvs.Response.LoadGameData load_game_data = 1004;
+  optional nue.protocol.exvs.Response.LoadRankMatch load_rank_match = 1005;
+  optional nue.protocol.exvs.Response.LoadClassMatch load_class_match = 1006;
+  optional nue.protocol.exvs.Response.PreLoadCard pre_load_card = 1100;
+  optional nue.protocol.exvs.Response.LoadCard load_card = 1101;
+  optional nue.protocol.exvs.Response.RegisterCard register_card = 1102;
+  optional nue.protocol.exvs.Response.SaveVsmResult save_vsm_result = 1200;
+  optional nue.protocol.exvs.Response.SaveVsmOnResult save_vsm_on_result = 1201;
+  optional nue.protocol.exvs.Response.SaveVscResult save_vsc_result = 1203;
+  optional nue.protocol.exvs.Response.SaveVstResult save_vst_result = 1204;
+  optional nue.protocol.exvs.Response.SaveVsmToResult save_vsm_to_result = 1205;
+  optional nue.protocol.exvs.Response.SavePracticeResult save_practice_result = 1206;
+  optional nue.protocol.exvs.Response.SaveStageResult save_stage_result = 1207;
+  optional nue.protocol.exvs.Response.SaveCharge save_charge = 1210;
+  optional nue.protocol.exvs.Response.SaveMedal save_medal = 1211;
+  optional nue.protocol.exvs.Response.SaveBattleLog save_battle_log = 1220;
+  optional nue.protocol.exvs.Response.SaveBattleLogOn save_battle_log_on = 1221;
+  optional nue.protocol.exvs.Response.SaveUserPlayResearchData save_user_play_research_data = 1223;
+  optional nue.protocol.exvs.Response.SaveResultCapture save_result_capture = 1224;
+  optional nue.protocol.exvs.Response.SaveFailedBattleLogOn save_failed_battle_log_on = 1225;
+  optional nue.protocol.exvs.Response.CheckCommunication check_communication = 1300;
+  optional nue.protocol.exvs.Response.UsePCoinTicket use_p_coin_ticket = 1305;
+  optional nue.protocol.exvs.Response.RegisterOption register_option = 1306;
+  optional nue.protocol.exvs.Response.LoadSpotInfo load_spot_info = 1400;
+  optional nue.protocol.exvs.Response.LoadRanking load_ranking = 1401;
+  optional nue.protocol.exvs.Response.CheckTelop check_telop = 1402;
+  optional nue.protocol.exvs.Response.LoadTelop load_telop = 1403;
+  optional nue.protocol.exvs.Response.CheckMovieRelease check_movie_release = 1404;
+  optional nue.protocol.exvs.Response.LoadSpotUrl load_spot_url = 1405;
+  optional nue.protocol.exvs.Response.LoadReplayCard load_replay_card = 1406;
+  optional nue.protocol.exvs.Response.PreSaveReplay pre_save_replay = 1407;
+  optional nue.protocol.exvs.Response.LoadMeetingCard load_meeting_card = 1409;
+  optional nue.protocol.exvs.Response.SaveTournamentResult save_tournament_result = 1410;
+  optional nue.protocol.exvs.Response.LoadBlackList load_black_list = 1416;
+  optional nue.protocol.exvs.Response.StartTournament start_tournament = 1417;
+  optional nue.protocol.exvs.Response.LoadRoom load_room = 1418;
+  optional nue.protocol.exvs.Response.RegisterRoom register_room = 1419;
+  optional nue.protocol.exvs.Response.Ping ping = 1500;
+  optional nue.protocol.exvs.Response.CheckTime check_time = 1501;
+  optional nue.protocol.exvs.Response.SaveLog save_log = 1502;
+  optional nue.protocol.exvs.Response.CheckResourceData check_resource_data = 1503;
+  message RegisterPcb {
+    repeated nue.protocol.exvs.Response.RegisterPcb.ServerInfo server_info = 1;
+    required bool sram_clear = 2;
+    required uint64 next_maintenance_start_at = 3;
+    required uint64 next_maintenance_end_at = 4;
+    repeated nue.protocol.exvs.Response.RegisterPcb.CoreDumpRes core_dump_res = 5;
+    optional bool ipv4_flag = 6;
+    repeated string lm_ip_addresses = 7;
+    message ServerInfo {
+      required nue.protocol.exvs.ServerType server_type = 1;
+      required string uri = 2;
+      required uint32 port = 3;
+      optional string account_name = 4;
+      optional string account_pass = 5;
+    }
+    message CoreDumpRes {
+      required string file_name = 1;
+      required string url = 2;
+    }
+  }
+  message RegisterPcbAck {
+  }
+  message SaveInsideData {
+  }
+  message LoadGameData {
+    repeated uint32 release_ms_id = 1;
+    repeated uint32 new_ms_id = 2;
+    repeated uint32 displayable_ms_id = 3;
+    repeated uint32 release_guest_nav_id = 4;
+    required nue.protocol.exvs.Response.LoadGameData.OnVsInfo on_vs_info = 5;
+    repeated uint32 update_ms_id = 6;
+    optional nue.protocol.exvs.Response.LoadGameData.WeeklyRankInfo weekly_rank_info = 7;
+    required uint32 training_time_limit = 8;
+    required bool newcard_campaign_flag = 9;
+    repeated nue.protocol.exvs.Response.LoadGameData.FreeMatchingTable free_matching_tables = 10;
+    repeated nue.protocol.exvs.Response.LoadGameData.FreeMatchingRankTable free_match_rank_tables = 11;
+    repeated uint32 score_display_interval = 12;
+    optional nue.protocol.exvs.Response.LoadGameData.XrossFesSetting fes_setting = 13;
+    required uint32 load_game_data_ver = 14;
+    required nue.protocol.exvs.Response.LoadGameData.ScoreBattlePoint score_battle_point = 15;
+    required nue.protocol.exvs.Response.LoadGameData.AttackScoreSetting attack_score_setting = 16;
+    optional nue.protocol.exvs.Response.LoadGameData.PlayerPointBonusEvent player_point_bonus_setting = 18;
+    repeated uint32 mobile_suit_blocklist = 20;
+    required uint32 vs_player_level_point = 21;
+    required uint32 cpu_player_level_point = 22;
+    required uint32 class_win_badge_point = 23;
+    required sint32 class_lose_badge_point = 24;
+    required uint32 class_win_badge_bonus1 = 25;
+    required sint32 class_win_badge_bonus2 = 26;
+    required uint32 class_lose_badge_bonus = 27;
+    required uint32 root_win_badge_point1 = 28;
+    required uint32 root_win_badge_point2 = 29;
+    required uint32 root_win_badge_point3 = 30;
+    required uint32 root_win_badge_point4 = 31;
+    required sint32 root_lose_badge_point = 32;
+    required uint32 root_difficulty_badge_bonus1 = 33;
+    required uint32 root_difficulty_badge_bonus2 = 34;
+    required uint32 root_difficulty_badge_bonus3 = 35;
+    required uint32 root_pattern_id = 36;
+    optional nue.protocol.exvs.Response.LoadGameData.OnCompeSetting on_compe_setting = 37;
+    required bool gpu_health_check_report_available_flag = 38;
+    message OnVsInfo {
+      required uint32 rule_time_limit_class = 1;
+      required uint32 rule_time_limit_free = 2;
+      required uint32 rule_damage_level_team = 3;
+      required uint32 rule_damage_level_shuffle = 4;
+    }
+    message WeeklyRankInfo {
+      required uint32 weekly_rank_no = 1;
+      required uint32 weekly_rank_course_id = 2;
+    }
+    message FreeMatchingTable {
+      required uint32 matching_rank = 1;
+      required uint32 matching_try_num = 2;
+      required uint32 seq_num = 3;
+      required bool make_room_flag = 4;
+    }
+    message FreeMatchingRankTable {
+      required uint32 win_num = 1;
+      required uint32 matching_rank = 2;
+    }
+    message XrossFesSetting {
+      required uint32 rule_type = 1;
+      required uint64 start_date = 2;
+      required uint64 end_date = 3;
+      required bool burst_xross_flag = 4;
+      required uint32 timer = 5;
+      required uint32 matching_border = 6;
+      repeated uint32 mobile_suit_blocklist = 7;
+      required uint64 playable_start_date = 8;
+      required uint64 playable_end_date = 9;
+    }
+    message ScoreBattlePoint {
+      required uint32 score_battle_3000_point = 1;
+      required uint32 score_battle_2500_point = 2;
+      required uint32 score_battle_2000_point = 3;
+      required uint32 score_battle_1500_point = 4;
+    }
+    message AttackScoreSetting {
+      required uint32 last_30_count_score_times = 1;
+      required uint32 down_score_times = 2;
+      required uint32 no_attack_decrease_score = 3;
+    }
+    message PlayerPointBonusEvent {
+      required uint64 start_date = 1;
+      required uint64 end_date = 2;
+      required uint32 point_bonus = 3;
+    }
+    message BadgeExpTable {
+      required uint32 badge_id = 1;
+      required uint32 up_default_exp = 2;
+      required uint32 down_default_exp = 3;
+    }
+    message OnCompeSetting {
+      required uint64 playable_start_date = 1;
+      required uint64 playable_end_date = 2;
+      required uint32 matching_type = 3;
+      required float modifier_value = 4;
+      required uint32 fixed_value = 5;
+      required uint32 win1_value = 6;
+      required uint32 win2_value = 7;
+      required uint32 cutoff_value = 8;
+      required uint32 rank_threshold_a = 9;
+      required uint32 rank_threshold_s = 10;
+    }
+  }
+  message LoadRankMatch {
+    repeated nue.protocol.exvs.Response.LoadRankMatch.RankMatchSeasonInfo rank_match_season = 1;
+    repeated nue.protocol.exvs.Response.LoadRankMatch.RankMatchActive rank_match_active = 2;
+    repeated nue.protocol.exvs.Response.LoadRankMatch.RankMatchPointThreshold rank_match_point_threshold = 3;
+    repeated nue.protocol.exvs.Response.LoadRankMatch.RankMatchWinPoint rank_match_win_point_solo = 4;
+    repeated nue.protocol.exvs.Response.LoadRankMatch.RankMatchLosePoint rank_match_lose_point_solo = 5;
+    required sint32 rank_base_win_point = 6;
+    required sint32 rank_base_lose_point = 7;
+    required sint32 rank_lose_result_bonus = 8;
+    repeated nue.protocol.exvs.Response.LoadRankMatch.RankMatchWinBonus rank_win_bonus = 9;
+    required uint32 rank_match_num_days = 10;
+    repeated nue.protocol.exvs.Response.LoadRankMatch.RankMatchWinPoint rank_match_win_point_team = 11;
+    repeated nue.protocol.exvs.Response.LoadRankMatch.RankMatchLosePoint rank_match_lose_point_team = 12;
+    repeated nue.protocol.exvs.Response.LoadRankMatch.RankMatchingTimeSchedule rank_matching_time_schedule = 13;
+    repeated nue.protocol.exvs.Response.LoadRankMatch.RankMatchingPatternTable rank_matching_pattern_table = 14;
+    repeated nue.protocol.exvs.Response.LoadRankMatch.RankMatchingConditionTable rank_matching_condition_table = 15;
+    required uint32 rank_win_point_bonus_2 = 16;
+    required uint32 rank_win_point_bonus_1 = 17;
+    required uint32 rank_lose_point_bonus_2 = 18;
+    required uint32 rank_lose_point_bonus_1 = 19;
+    required uint32 rank_win_point_bonus_3 = 20;
+    required uint32 rank_lose_point_bonus_3 = 21;
+    required uint32 exx_threshold_order = 22;
+    required uint32 exx_threshold_point = 23;
+    message RankMatchSeasonInfo {
+      required uint32 season_id = 1;
+      required uint64 start_date = 2;
+      required uint64 end_date = 3;
+      required uint64 off_end_date = 4;
+    }
+    message RankMatchActive {
+      required uint32 team_type = 1;
+      required uint32 rank_zone = 2;
+      required uint32 matching_rank_zone = 3;
+    }
+    message RankMatchingTimeSchedule {
+      required uint64 start_at = 1;
+      required uint64 end_at = 2;
+      required uint32 pattern_id = 3;
+      required uint32 condition_id = 4;
+    }
+    message RankMatchingPatternTable {
+      required uint32 pattern_id = 1;
+      repeated nue.protocol.exvs.Response.LoadRankMatch.RankMatchingPatternTable.RankMatchingPattern rank_matching_solo = 2;
+      repeated nue.protocol.exvs.Response.LoadRankMatch.RankMatchingPatternTable.RankMatchingPattern rank_matching_team = 3;
+      message RankMatchingPattern {
+        required uint32 matching_div = 1;
+        required uint32 rank_id = 2;
+        required uint32 level = 3;
+      }
+    }
+    message RankMatchingConditionTable {
+      required uint32 condition_id = 1;
+      repeated nue.protocol.exvs.Response.LoadRankMatch.RankMatchingConditionTable.RankMatchingCondition rank_matching_condition_solo = 2;
+      repeated nue.protocol.exvs.Response.LoadRankMatch.RankMatchingConditionTable.RankMatchingCondition rank_matching_condition_team = 3;
+      message RankMatchingCondition {
+        required uint32 matching_div = 1;
+        required uint32 matching_try_num = 2;
+        required uint32 seq_num = 3;
+        required bool make_room_flag = 4;
+      }
+    }
+    message RankMatchPointThreshold {
+      required uint32 matching_rank_id = 1;
+      required sint32 upper_point = 2;
+      required sint32 lower_point = 3;
+      required uint32 init_num = 4;
+    }
+    message RankMatchWinPoint {
+      required uint32 level = 1;
+      required sint32 point = 2;
+    }
+    message RankMatchLosePoint {
+      required uint32 rank_zone_id = 1;
+      required sint32 point = 2;
+    }
+    message RankMatchWinBonus {
+      required uint32 rank_zone_id = 1;
+      required sint32 point = 2;
+    }
+  }
+  message LoadClassMatch {
+    required uint32 constant_rate = 1;
+    required uint32 win_score_coefficient = 2;
+    repeated nue.protocol.exvs.Response.LoadClassMatch.ClassChangeInitialRate class_change_initial_rate = 3;
+    repeated nue.protocol.exvs.Response.LoadClassMatch.ClassGradeThreshold grade_thresholds = 4;
+    required nue.protocol.exvs.Response.LoadClassMatch.SearchRatioTable search_ratios = 5;
+    repeated nue.protocol.exvs.Response.LoadClassMatch.ClassMatchingTimeSchedule class_matching_time_schedule = 6;
+    repeated nue.protocol.exvs.Response.LoadClassMatch.ClassMatchingPatternTable class_matching_pattern_table = 7;
+    repeated nue.protocol.exvs.Response.LoadClassMatch.ClassMatchingRequest class_matching_request_table = 8;
+    required uint32 initial_rate = 9;
+    repeated nue.protocol.exvs.Response.LoadClassMatch.ConsecutiveGrade consecutive_win_grade = 10;
+    repeated nue.protocol.exvs.Response.LoadClassMatch.ConsecutiveGrade consecutive_lose_grade = 11;
+    message ClassChangeInitialRate {
+      required uint32 team_type = 1;
+      required uint32 class_id = 2;
+      required uint32 up_default_rate = 3;
+      required uint32 down_default_rate = 4;
+    }
+    message ClassGradeThreshold {
+      required uint32 team_type = 1;
+      required uint32 class_id = 2;
+      required uint32 grade_id = 3;
+      required uint32 max_rate = 4;
+      required uint32 min_rate = 5;
+    }
+    message SearchRatioTable {
+      repeated nue.protocol.exvs.Response.LoadClassMatch.SearchRatioTable.SearchRatio search_ratio_solo = 1;
+      repeated nue.protocol.exvs.Response.LoadClassMatch.SearchRatioTable.SearchRatio search_ratio_team = 2;
+      message SearchRatio {
+        required uint32 class_id = 1;
+        required uint32 level_id = 2;
+        required uint32 num = 3;
+        required uint32 search_ratio = 4;
+      }
+    }
+    message ClassMatchingPatternTable {
+      required uint32 pattern_id = 1;
+      repeated nue.protocol.exvs.Response.LoadClassMatch.ClassMatchingPatternTable.ClassMatchingPattern class_matching_solo = 2;
+      repeated nue.protocol.exvs.Response.LoadClassMatch.ClassMatchingPatternTable.ClassMatchingPattern class_matching_team = 3;
+      message ClassMatchingPattern {
+        required uint32 class_id = 1;
+        required uint32 level_id = 2;
+        required uint32 grade_id_start = 3;
+        required uint32 grade_id_end = 4;
+      }
+    }
+    message ClassMatchingTimeSchedule {
+      required uint64 start_at = 1;
+      required uint64 end_at = 2;
+      required uint32 pattern_id = 3;
+    }
+    message ClassMatchingRequest {
+      required uint32 room_search_id = 1;
+      required uint32 matching_try_num = 2;
+      required uint32 seq_num = 3;
+      required bool make_room_flag = 4;
+    }
+    message ConsecutiveGrade {
+      required uint32 consecutive_num_start = 1;
+      required uint32 consecutive_num_end = 2;
+      required sint32 grade_num = 3;
+    }
+  }
+  message PreLoadCard {
+    required string session_id = 1;
+    optional nue.protocol.exvs.AcidResponse acid_response = 2;
+    optional uint32 mb_id = 3 [default = 0];
+    optional nue.protocol.exvs.Response.PreLoadCard.LoadPlayer load_player = 4;
+    optional string access_code = 5;
+    optional bool is_new_card = 6;
+    optional uint32 am_id = 7;
+    optional nue.protocol.exvs.AcidError acid_error = 8;
+    optional nue.protocol.exvs.Response.PreLoadCard.MobileUserGroup user = 9;
+    optional nue.protocol.exvs.Response.PreLoadCard.MatchingTag matching_tag = 10;
+    message MatchingTag {
+      required uint32 id = 1;
+      required string tag_name = 2;
+      required uint32 tag_type = 3;
+      required uint32 matching_type = 4;
+      required uint64 end_date = 5;
+      required uint32 matching_attribute = 6;
+      repeated uint32 selectable_ms_id = 7;
+      optional uint32 rule_type = 8;
+      optional bool revenge_flag = 9;
+      optional uint32 timer = 10;
+      optional uint32 world_id = 11;
+      optional uint32 fes_rule_type = 12;
+      optional bool randomstage_only_flag = 13;
+      required bool oncompe_matching_flag = 14;
+      repeated uint32 mobile_suit_blocklist = 15;
+    }
+    message LoadPlayer {
+      required uint32 pilot_id = 1;
+      optional uint64 last_played_at = 2;
+      required uint32 total_win = 3;
+      required uint32 total_lose = 4;
+      required uint32 player_level_id = 5;
+      required uint32 player_exp = 6;
+      optional uint32 vsm_after_class_change_solo = 13;
+      optional uint32 vsm_after_class_change_team = 14;
+      required uint32 shuffle_win = 15;
+      required uint32 shuffle_lose = 16;
+      required uint32 team_win = 17;
+      required uint32 team_lose = 18;
+      required uint32 class_solo_win = 19;
+      required uint32 class_solo_lose = 20;
+      required uint32 class_team_win = 21;
+      required uint32 class_team_lose = 22;
+      required uint32 class_id_solo = 27;
+      required uint32 class_id_team = 28;
+      optional uint32 fes_win = 29;
+      optional uint32 fes_lose = 30;
+      optional uint32 free_win = 31;
+      optional uint32 free_lose = 32;
+      optional bool ex_tutorial_playable_flag = 33;
+      required uint32 grade_solo = 34;
+      required uint32 grade_team = 35;
+      required uint32 top_point_rank_solo = 36;
+      required uint32 top_point_rank_num_solo = 37;
+      required uint32 top_point_rank_team = 38;
+      required uint32 top_point_rank_num_team = 39;
+      required float rate_solo = 40;
+      required float rate_team = 41;
+      required bool grade_1_solo = 42;
+      required bool grade_1_team = 43;
+      required uint32 top_point_double_num = 44;
+    }
+    message MobileUserGroup {
+      required uint32 user_id = 1;
+      required string player_name = 2;
+      required uint32 open_record = 3;
+      required bool open_player_level = 4;
+      required bool open_skillpoint = 5;
+      optional nue.protocol.exvs.Response.PreLoadCard.MobileUserGroup.CustomizeGroup customize_group = 6;
+      repeated nue.protocol.exvs.Response.PreLoadCard.MobileUserGroup.GuestNavGroup guest_navs = 7;
+      repeated nue.protocol.exvs.Response.PreLoadCard.MobileUserGroup.FavoriteMSGroup favorite_mobile_suits = 8;
+      repeated nue.protocol.exvs.Response.PreLoadCard.MobileUserGroup.SkinChangeMobilesuits skin_change_mobilesuits = 9;
+      required uint32 gp = 11;
+      required uint32 game_pad_style = 12;
+      required uint32 badge_id = 13;
+      required sint32 badge_exp = 14;
+      required bool auth_flag = 15;
+      message CustomizeGroup {
+        required nue.protocol.exvs.TitleCustomize default_title_customize = 1;
+        required uint32 guest_nav_boost = 7;
+        required uint32 navi_boost_remains = 8;
+        required bool battle_nav_advise_flag = 10;
+        required bool battle_nav_notify_flag = 11;
+        required bool guest_nav_anniv_flag = 12;
+        required bool quick_start_flag = 13;
+        required uint32 command_disp_config = 14;
+        optional float group_point_boost = 15;
+      }
+      message GuestNavGroup {
+        required bool guest_nav_setting_flag = 1;
+        required uint32 guest_nav_id = 2;
+        optional uint32 guest_nav_costume = 3;
+        required uint32 guest_nav_familiarity = 4;
+        optional uint32 guest_nav_remains = 5;
+        required bool new_costume_flag = 6;
+        required bool battle_nav_setting_flag = 7;
+      }
+      message FavoriteMSGroup {
+        required uint32 mst_mobile_suit_id = 1;
+        required uint32 ms_used_num = 2;
+        repeated uint32 bgm_settings = 3;
+        required uint32 bgm_play_method = 4;
+        required uint32 burst_type = 5;
+      }
+      message SkinChangeMobilesuits {
+        required uint32 mst_mobile_suit_id = 1;
+        required uint32 skin_id = 2;
+      }
+    }
+  }
+  message LoadCard {
+    required nue.protocol.exvs.Response.LoadCard.PilotDataGroup pilot_data_group = 1;
+    optional nue.protocol.exvs.Response.LoadCard.MobileUserGroup mobile_user_group = 2;
+    message PilotDataGroup {
+      repeated uint32 reward_ms_id = 1;
+      repeated nue.protocol.exvs.Response.LoadCard.PilotDataGroup.MSSkillGroup ms_skills = 2;
+      required nue.protocol.exvs.Response.LoadCard.PilotDataGroup.TrainingSettingGroup training = 4;
+      required nue.protocol.exvs.Response.LoadCard.PilotDataGroup.PracticeGroup practice_info = 5;
+      repeated nue.protocol.exvs.Response.LoadCard.PilotDataGroup.HighScoreInfo high_score_info = 6;
+      message MSSkillGroup {
+        required uint32 mst_mobile_suit_id = 1;
+        required uint32 ms_used_num = 2;
+        required uint32 costume_id = 3;
+        required uint32 triad_buddy_point = 4;
+      }
+      message TrainingSettingGroup {
+        required uint32 mst_mobile_suit_id = 1;
+        required uint32 burst_type = 2;
+        required uint32 cpu_level = 3;
+        required uint32 ex_burst_gauge = 4;
+        required bool damage_display = 5;
+        required bool cpu_auto_guard = 6;
+        required uint32 command_guide_display = 7;
+        optional uint32 armor = 8;
+        optional bool cpu_auto_heal = 9;
+        optional bool ex_over_limit = 10;
+        optional bool fast_reload = 11;
+      }
+      message PracticeGroup {
+        required uint32 highscore_scene_1 = 1;
+        required uint32 highscore_scene_2 = 2;
+        required uint32 highscore_scene_3 = 3;
+        required uint32 highscore_scene_4 = 4;
+        required uint32 highscore_scene_5 = 5;
+        required uint32 highscore_scene_6 = 6;
+        required uint32 course_score = 7;
+        required uint32 give_damage = 8;
+        required uint32 defeat_num = 9;
+        required uint32 ex_burst = 10;
+        required uint32 rocked_on_num = 11;
+        required uint32 taken_damage = 12;
+        required bool all_s_flag = 13;
+      }
+      message HighScoreInfo {
+        required uint32 difficulty = 1;
+        required uint32 clear_time_1 = 2;
+        required uint32 clear_score_1 = 3;
+        required uint32 clear_time_2 = 4;
+        required uint32 clear_score_2 = 5;
+        required uint32 clear_time_3 = 6;
+        required uint32 clear_score_3 = 7;
+        required uint32 total_clear_time = 8;
+        required uint32 total_clear_score = 9;
+      }
+    }
+    message MobileUserGroup {
+      required nue.protocol.exvs.Response.LoadCard.MobileUserGroup.CustomizeGroup customize = 1;
+      required uint32 mst_mobile_suit_id = 8;
+      optional nue.protocol.exvs.Response.LoadCard.MobileUserGroup.GamepadGroup gamepad = 15;
+      required uint32 burst_type = 18;
+      required bool paid_flag = 19;
+      required bool radar_type = 20;
+      required nue.protocol.exvs.CommandMessagePostion message_position = 22;
+      required bool playing_stamp_flag = 23;
+      required uint32 mobile_user_id = 24;
+      repeated uint32 partner_recruit_am_id_nglist = 25;
+      repeated nue.protocol.exvs.Response.LoadCard.MobileUserGroup.PlayerSticker player_sticker = 26;
+      required bool mute_flag = 27;
+      optional nue.protocol.exvs.Response.LoadCard.MobileUserGroup.QuickStartInfo quick_start_info = 29;
+      required uint32 pcoin_ticket_num = 30;
+      required nue.protocol.exvs.Response.LoadCard.MobileUserGroup.CommandMessageData solo_command_messages = 31;
+      required nue.protocol.exvs.Response.LoadCard.MobileUserGroup.CommandMessageData team_command_messages = 32;
+      required nue.protocol.exvs.Response.LoadCard.MobileUserGroup.CommandMessageData instant_team_command_messages = 33;
+      required bool command_message_auto_flag = 34;
+      optional nue.protocol.exvs.Response.LoadCard.MobileUserGroup.SaveDataInfo save_data_info = 35;
+      repeated nue.protocol.exvs.TagTeamGroup tag_teams = 36;
+      required uint32 group_id = 37;
+      optional string group_name = 38;
+      optional uint32 group_plate_id = 39;
+      optional uint32 group_emblem_base_id = 40;
+      optional uint32 group_emblem_parts_id = 41;
+      optional uint32 group_emblem_effect_id = 42;
+      optional nue.protocol.exvs.Response.LoadCard.MobileUserGroup.OnCompeUserInfo on_compe_user_info = 43;
+      optional int32 battle_option_1 = 44;
+      optional int32 battle_option_2 = 45;
+      optional int32 battle_option_3 = 46;
+      required int32 marker_color_id = 47;
+      message CustomizeGroup {
+        required uint32 default_gauge_design_id = 1;
+        repeated uint32 default_bgm_settings = 2;
+        required uint32 default_bgm_play_method = 3;
+        required bool bgm_safe_mode = 5;
+      }
+      message CommandMessageData {
+        required uint32 start_message_id = 1;
+        required string start_message_text = 2;
+        required uint32 up_message_id = 3;
+        required string up_message_text = 4;
+        required uint32 down_message_id = 5;
+        required string down_message_text = 6;
+        required uint32 left_message_id = 7;
+        required string left_message_text = 8;
+        required uint32 right_message_id = 9;
+        required string right_message_text = 10;
+        required uint32 end_message_id = 11;
+        required string end_message_text = 12;
+      }
+      message GamepadGroup {
+        required uint32 x_key = 1;
+        required uint32 y_key = 2;
+        required uint32 a_key = 3;
+        required uint32 b_key = 4;
+        required uint32 lb_key = 5;
+        required uint32 rb_key = 6;
+        required uint32 lt_key = 7;
+        required uint32 rt_key = 8;
+        required uint32 lsb_key = 9;
+        required uint32 rsb_key = 10;
+      }
+      message PlayerSticker {
+        required uint32 mst_mobile_suit_id = 1;
+        repeated uint32 pose_id = 2;
+        repeated nue.protocol.exvs.Response.LoadCard.MobileUserGroup.PlayerSticker.Tracker tracker = 3;
+        required uint32 sticker_background_id = 4;
+        required uint32 sticker_effect_id = 5;
+        required bool pilot_image_disp_flag = 6;
+        repeated uint32 costume_id = 7;
+        optional bool cutin_image_use_flag = 8;
+        optional uint32 sub_background_id = 9;
+        message Tracker {
+          required uint32 type = 1;
+          optional uint32 rarity = 2;
+          required uint32 text_id = 3;
+          optional uint32 intger_tracker_value = 4;
+          optional float float_tracker_value = 5;
+          optional string custom_text = 6;
+        }
+      }
+      message QuickStartInfo {
+        required uint32 game_mode = 1;
+        optional uint32 rule_type = 2;
+        required uint32 team_type = 3;
+        required uint32 mst_mobile_suit_id_0 = 4;
+        required uint32 burst_type_0 = 5;
+        required uint32 mst_mobile_suit_id_1 = 6;
+        required uint32 burst_type_1 = 7;
+        required uint32 stage_id = 8;
+      }
+      message SaveDataInfo {
+        required uint32 pattern_id = 1;
+        required uint32 difficulty = 2;
+        required uint32 stage_num = 3;
+        required uint32 boss_id_1 = 4;
+        optional uint32 boss_id_2 = 5;
+        required uint32 max_gauge = 6;
+        required uint32 current_gauge = 7;
+        required uint32 mst_mobile_suit_id = 8;
+        repeated uint32 custom_chip_ids = 9;
+        required string save_data_url = 10;
+      }
+      message OnCompeUserInfo {
+        required uint32 on_compe_point = 1;
+        required uint32 current_rank = 2;
+      }
+    }
+  }
+  message RegisterCard {
+    required string session_id = 1;
+    optional nue.protocol.exvs.AcidResponse acid_response = 2;
+    optional uint32 pilot_id = 3 [default = 0];
+    optional string access_code = 4;
+    optional bool is_registered = 5;
+    required nue.protocol.exvs.AcidError acid_error = 6;
+  }
+  message SaveVsmResult {
+  }
+  message SaveVsmOnResult {
+  }
+  message SaveVsmOnEventResult {
+  }
+  message SaveVscResult {
+  }
+  message SaveVstResult {
+  }
+  message SaveVsmToResult {
+  }
+  message SavePracticeResult {
+  }
+  message SaveStageResult {
+    optional string url = 1;
+  }
+  message SaveCharge {
+    repeated nue.protocol.exvs.Response.SaveCharge.SaveChargeResult save_charge_result = 1;
+    message SaveChargeResult {
+      required nue.protocol.exvs.Response.SaveCharge.SaveChargeResult.Hc2Error hc2_error = 1;
+      optional string hc2_error_msg = 2;
+      enum Hc2Error {
+        HC2_SUCCESS = 0;
+        HC2_ERROR = 1;
+      }
+    }
+  }
+  message SaveMedal {
+    optional nue.protocol.exvs.AcidResponse acid_response = 1;
+    optional bool is_new_card = 2;
+    required nue.protocol.exvs.AcidError acid_error = 3;
+    required uint32 pilot_id = 4;
+    required uint32 season_medal = 5;
+    required uint32 grant_medal = 6;
+    required uint32 grant_loc_medal = 7;
+  }
+  message SaveBattleLog {
+  }
+  message SaveBattleLogOn {
+  }
+  message SaveUserPlayResearchData {
+  }
+  message SaveResultCapture {
+    repeated string url = 1;
+  }
+  message SaveFailedBattleLogOn {
+  }
+  message CheckCommunication {
+  }
+  message UsePCoinTicket {
+    required bool approve = 1;
+  }
+  message RegisterOption {
+  }
+  message LoadSpotInfo {
+    optional uint32 sinfo_bgid = 1;
+    optional string sinfo_title = 2;
+    optional string sinfo_text = 3;
+    optional bool infbar_switch = 4;
+  }
+  message LoadRanking {
+    optional nue.protocol.exvs.RankMessageType rank_type = 1;
+    optional uint64 timestamp = 2;
+    optional uint32 weekly_rank_no = 3;
+    optional uint32 weekly_rank_course_id = 4;
+    optional nue.protocol.exvs.MsUsedRank ms_used_rank = 5;
+    optional nue.protocol.exvs.PlayerScoreRank player_score_rank = 16;
+    optional nue.protocol.exvs.ClassMatchScore class_match_score = 18;
+    optional nue.protocol.exvs.TagClassMatchScore tag_class_match_score = 19;
+    optional nue.protocol.exvs.TopPointSoloRank top_point_solo_rank = 20;
+    optional nue.protocol.exvs.TopPointTeamRank top_point_team_rank = 21;
+    optional nue.protocol.exvs.RouteBattleScoreRank route_battle_score_rank = 22;
+    optional nue.protocol.exvs.RouteBattleTimeRank route_battle_time_rank = 23;
+    optional nue.protocol.exvs.GroupPointRank group_point_rank = 24;
+  }
+  message CheckTelop {
+    optional uint32 telop1_id = 1;
+    optional uint32 telop2_id = 2;
+    optional uint32 telop3_id = 3;
+    optional uint32 telop4_id = 4;
+    optional uint32 telop5_id = 5;
+    optional uint32 telop6_id = 6;
+  }
+  message LoadTelop {
+    required string telop_data = 1;
+  }
+  message CheckMovieRelease {
+    repeated nue.protocol.exvs.Response.CheckMovieRelease.MovieGroup movies = 1;
+    message MovieGroup {
+      required uint32 movie_id = 1;
+      required uint32 release_flag = 2;
+      required uint64 opened_at = 3;
+      required uint64 expired_at = 4;
+    }
+  }
+  message LoadSpotUrl {
+    required string url = 1;
+    required string qrcode = 2;
+    optional string temp_password = 3;
+  }
+  message LoadReplayCard {
+    optional uint32 pilot_id = 1;
+    optional bool is_new_card = 2;
+    optional nue.protocol.exvs.Response.LoadReplayCard.MobileUserGroup user = 3;
+    required nue.protocol.exvs.AcidError acid_error = 4;
+    message MobileUserGroup {
+      required uint32 user_id = 1;
+      optional bool paid = 2;
+      optional nue.protocol.exvs.Response.LoadReplayCard.MobileUserGroup.ReplayConfig replay_config = 3;
+      required uint32 ticket_num = 4;
+      required uint32 slot_num = 5;
+      repeated nue.protocol.exvs.Response.LoadReplayCard.MobileUserGroup.ReplayInfo replay_service = 6;
+      message ReplayConfig {
+        required uint32 view1 = 2;
+        optional uint32 view2_player = 3;
+        optional uint32 view2_team = 4;
+        required bool timeline = 5;
+        repeated uint32 bgm_ids = 6;
+        required bool hide_name = 7;
+      }
+      message ReplayInfo {
+        required string url = 1;
+        required uint32 replay_type = 2;
+        repeated nue.protocol.exvs.Response.LoadReplayCard.MobileUserGroup.ReplayInfo.PilotGroup pilots = 3;
+        required uint64 played_at = 4;
+        required uint32 replay_size = 5;
+        message PilotGroup {
+          required uint32 pilot_id = 1;
+          required uint32 mst_mobile_suit_id = 2;
+          required string player_name = 3;
+          required bool cpu_flag = 4;
+          required uint32 skin_id = 5;
+        }
+      }
+    }
+  }
+  message PreSaveReplay {
+    required string url = 1;
+    required uint32 status = 2;
+  }
+  message LoadMeetingCard {
+    optional nue.protocol.exvs.AcidResponse acid_response = 1;
+    optional nue.protocol.exvs.Response.LoadMeetingCard.LoadPlayer load_player = 2;
+    optional string access_code = 3;
+    optional bool is_new_card = 4;
+    optional nue.protocol.exvs.AcidError acid_error = 6;
+    optional nue.protocol.exvs.Response.LoadMeetingCard.MobileUserGroup user = 5;
+    message LoadPlayer {
+      required uint32 pilot_id = 1;
+      optional uint64 last_played_at = 2;
+      required uint32 total_win = 3;
+      required uint32 total_lose = 4;
+      required uint32 player_level_id = 5;
+    }
+    message MobileUserGroup {
+      required uint32 user_id = 1;
+      required string player_name = 2;
+      required uint32 open_record = 3;
+      repeated nue.protocol.exvs.Response.LoadMeetingCard.MobileUserGroup.GuestNavGroup guest_navs = 5;
+      required nue.protocol.exvs.TitleCustomize default_title_customize = 6;
+      required uint32 badge_id = 7;
+      repeated nue.protocol.exvs.TagTeamGroup tag_teams = 8;
+      required uint32 group_id = 9;
+      optional string group_name = 10;
+      optional uint32 group_plate_id = 11;
+      optional uint32 group_emblem_base_id = 12;
+      optional uint32 group_emblem_parts_id = 13;
+      optional uint32 group_emblem_effect_id = 14;
+      required bool open_player_level = 15;
+      message GuestNavGroup {
+        required bool guest_nav_setting_flag = 1;
+        required uint32 guest_nav_id = 2;
+        optional uint32 guest_nav_costume = 3;
+        required uint32 guest_nav_familiarity = 4;
+        optional uint32 guest_nav_remains = 5;
+        required bool new_costume_flag = 6;
+      }
+    }
+  }
+  message SaveTournamentResult {
+  }
+  message LoadBlackList {
+    required uint32 threshold_delayed_rtt = 1;
+    required uint32 max_blacklist_num = 2;
+    repeated nue.protocol.exvs.UnfittedLocationGroup blacklist = 3;
+    required uint32 delay_restrict_condition = 4;
+    required uint32 delay_permit_condition = 5;
+    required uint32 threshold_delayed_frame = 6;
+  }
+  message StartTournament {
+    required uint32 tournament_id = 1;
+  }
+  message LoadRoom {
+    optional uint32 pilot_id = 1;
+    optional bool is_new_card = 2;
+    repeated nue.protocol.exvs.Response.LoadRoom.RoomGroup rooms = 3;
+    optional uint32 status = 4;
+    optional nue.protocol.exvs.AcidError acid_error = 5;
+    message RoomGroup {
+      required uint32 tag_id = 1;
+      required string registration_code = 2;
+      required uint32 tag_type = 3;
+      required uint32 matching_type = 4;
+      required uint64 start_date = 5;
+      required uint64 end_date = 6;
+      optional uint32 current_num = 7;
+      optional uint32 member_limit = 8;
+      optional uint32 win_rate_min = 9;
+      optional uint32 win_rate_max = 10;
+      required uint32 class_id_min = 11;
+      required uint32 class_id_max = 12;
+      optional uint32 grade_id_min = 13;
+      optional uint32 grade_id_max = 14;
+      optional uint32 rule_type = 15;
+      optional uint32 fes_rule_type = 16;
+      optional uint32 policy = 17;
+    }
+  }
+  message RegisterRoom {
+    required uint32 status = 1;
+  }
+  message Ping {
+    required uint64 response_at = 1;
+    required bool game_server = 2;
+    required bool acid_server = 3;
+    required bool matchmaking_server = 4;
+  }
+  message CheckTime {
+    required uint64 at = 1;
+  }
+  message SaveLog {
+    required uint32 load_game_data_ver = 1;
+  }
+  message CheckResourceData {
+    optional nue.protocol.exvs.Response.CheckResourceData.ReplayGroup replay = 1;
+    optional nue.protocol.exvs.Response.CheckResourceData.MovieGroup movie = 2;
+    repeated nue.protocol.exvs.Response.CheckResourceData.ImageGroup images = 3;
+    message ReplayGroup {
+      required string url = 1;
+      required uint32 size = 2;
+      required uint64 resource_id = 3;
+      required bool special_flag = 4;
+    }
+    message MovieGroup {
+      required string url = 1;
+      required uint32 size = 2;
+      required uint64 resource_id = 3;
+    }
+    message ImageGroup {
+      required uint32 slot_number = 1;
+      required string url = 2;
+      required uint32 size = 3;
+      required uint64 resource_id = 4;
+    }
+  }
+}
+
+message MsUsedRank {
+  required uint64 sum_start = 1;
+  required uint64 sum_end = 2;
+  repeated nue.protocol.exvs.MsUsedRank.Row rows = 3;
+  message Row {
+    required uint32 rank_no = 1;
+    required uint32 prev_rank_no = 2;
+    required uint32 ms_id = 3;
+    required uint32 used_num = 4;
+    required double used_rate = 5;
+    required uint32 vsm_win = 6;
+  }
+}
+
+message RankingRibbon {
+  required uint32 time_attack_ribbon_id = 1;
+  required uint32 score_ribbon_id = 2;
+  required uint32 target_defeat_ribbon_id = 3;
+  required uint32 wanted_ms_ribbon_id = 4;
+}
+
+message PlayerScoreRank {
+  required uint64 sum_start = 1;
+  required uint64 sum_end = 2;
+  repeated nue.protocol.exvs.PlayerScoreRank.Row rows = 3;
+  message Row {
+    required uint32 rank_no = 1;
+    required uint32 prev_rank_no = 2;
+    required uint32 pilot_id = 3;
+    required string player_name = 4;
+    required uint32 score = 5;
+    required uint32 player_level_id = 6;
+    required uint32 badge_id = 7;
+    required uint32 open_player_level = 8;
+    required uint32 title_text_id = 9;
+    optional string custom_txt = 10;
+    optional string group_name = 11;
+    required uint32 fav_ms_id = 12;
+    required uint32 ms_used_num = 13;
+    required string home_loc_name = 14;
+    required uint32 home_loc_pref = 15;
+    required uint32 open_record = 16;
+    required uint32 play_num = 17;
+    required uint32 win_num = 18;
+    required uint32 class_id_solo = 19;
+    required uint32 class_id_team = 20;
+    required uint32 skin_id = 21;
+    required uint32 top_point_rank_num_solo = 22;
+    required uint32 top_point_rank_num_team = 23;
+    required uint32 grade_solo = 24;
+    required uint32 grade_team = 25;
+    required uint32 top_point_rank_solo = 26;
+    required uint32 top_point_rank_team = 27;
+    required uint32 top_point_double_num = 28;
+  }
+}
+
+message ClassMatchScore {
+  required uint64 sum_start = 1;
+  required uint64 sum_end = 2;
+  repeated nue.protocol.exvs.ClassMatchScore.Row rows = 3;
+  message Row {
+    required uint32 rank_no = 1;
+    required uint32 prev_rank_no = 2;
+    required uint32 pilot_id = 3;
+    required string player_name = 4;
+    required uint32 score = 5;
+    required uint32 title_text_id = 6;
+    optional string custom_txt = 7;
+    optional string group_name = 8;
+    required uint32 fav_ms_id = 9;
+    required uint32 skin_id = 10;
+    required uint32 ms_used_num = 11;
+    required string home_loc_name = 12;
+    required uint32 home_loc_pref = 13;
+    required uint32 open_record = 14;
+    required uint32 play_num = 15;
+    required uint32 win_num = 16;
+    required uint32 class_id_solo = 17;
+    required uint32 class_id_team = 18;
+    required uint32 grade_id_solo = 19;
+    required uint32 grade_id_team = 30;
+    required uint32 player_level_id = 21;
+    required uint32 top_point_rank_num_solo = 22;
+    required uint32 top_point_rank_num_team = 23;
+    required uint32 badge_id = 24;
+    required bool open_player_level = 25;
+    required uint32 top_point_rank_solo = 26;
+    required uint32 top_point_rank_team = 27;
+    required uint32 top_point_double_num = 28;
+  }
+}
+
+message TagClassMatchScore {
+  required uint64 sum_start = 1;
+  required uint64 sum_end = 2;
+  repeated nue.protocol.exvs.TagClassMatchScore.Row rows = 3;
+  message Row {
+    required uint32 rank_no = 1;
+    required uint32 prev_rank_no = 2;
+    required uint32 tag_id = 3;
+    required string tag_name = 4;
+    required uint32 group_tag_point = 5;
+    optional string group_name = 6;
+    required string p_player_name = 7;
+    required uint32 p_pilot_id = 8;
+    required uint32 p_fav_ms_id = 9;
+    required uint32 p_skin_id = 10;
+    required string p_home_loc_name = 11;
+    required uint32 p_home_loc_pref = 12;
+    required uint32 p_class_id = 13;
+    required uint32 p_grade_team = 14;
+    required uint32 p_top_point_rank_num = 15;
+    required string c_player_name = 16;
+    required uint32 c_pilot_id = 17;
+    required uint32 c_fav_ms_id = 18;
+    required uint32 c_skin_id = 19;
+    required uint32 c_class_id = 20;
+    required uint32 c_grade_team = 21;
+    required uint32 c_top_point_rank_num = 22;
+    required uint32 play_num = 23;
+    required uint32 win_num = 24;
+    required uint32 skill_point = 25;
+    required uint32 p_ms_used_num = 26;
+    required uint32 c_ms_used_num = 27;
+    required uint32 score = 28;
+    required uint32 p_top_point_rank_team = 29;
+    required uint32 c_top_point_rank_team = 30;
+    required uint32 p_top_point_double_num = 31;
+    required uint32 c_top_point_double_num = 32;
+  }
+}
+
+message TopPointSoloRank {
+  required uint64 sum_start = 1;
+  required uint64 sum_end = 2;
+  repeated nue.protocol.exvs.TopPointSoloRank.Row rows = 3;
+  message Row {
+    required uint32 rank_no = 1;
+    required uint32 prev_rank_no = 2;
+    required uint32 pilot_id = 3;
+    required string player_name = 4;
+    required uint32 score = 5;
+    required uint32 title_text_id = 6;
+    optional string custom_txt = 7;
+    optional string group_name = 8;
+    required uint32 fav_ms_id = 9;
+    required uint32 ms_used_num = 10;
+    required string home_loc_name = 11;
+    required uint32 home_loc_pref = 12;
+    required uint32 open_record = 13;
+    required uint32 play_num = 14;
+    required uint32 win_num = 15;
+    required uint32 player_level_id = 16;
+    required uint32 skin_id = 17;
+    required uint32 top_point_rank_num = 18;
+    required uint32 badge_id = 19;
+    required bool open_player_level = 20;
+    required uint32 top_point_double_num = 21;
+  }
+}
+
+message TopPointTeamRank {
+  required uint64 sum_start = 1;
+  required uint64 sum_end = 2;
+  repeated nue.protocol.exvs.TopPointTeamRank.Row rows = 3;
+  message Row {
+    required uint32 rank_no = 1;
+    required uint32 prev_rank_no = 2;
+    required uint32 pilot_id = 3;
+    required string player_name = 4;
+    required uint32 score = 5;
+    required uint32 title_text_id = 6;
+    optional string custom_txt = 7;
+    optional string group_name = 8;
+    required uint32 fav_ms_id = 9;
+    required uint32 ms_used_num = 10;
+    required string home_loc_name = 11;
+    required uint32 home_loc_pref = 12;
+    required uint32 open_record = 13;
+    required uint32 play_num = 14;
+    required uint32 win_num = 15;
+    required uint32 player_level_id = 16;
+    required uint32 skin_id = 17;
+    required uint32 top_point_rank_num = 18;
+    required uint32 badge_id = 19;
+    required bool open_player_level = 20;
+    required uint32 top_point_double_num = 21;
+  }
+}
+
+message RouteBattleScoreRank {
+  required uint64 sum_start = 1;
+  required uint64 sum_end = 2;
+  repeated nue.protocol.exvs.RouteBattleScoreRank.Row rows = 3;
+  message Row {
+    required uint32 rank_no = 1;
+    required uint32 prev_rank_no = 2;
+    required uint32 pilot_id = 3;
+    required string player_name = 4;
+    required uint64 score = 5;
+    required uint32 battle_clear_num = 6;
+    required uint32 all_stage_clear_num = 7;
+    required uint32 player_level_id = 8;
+    required uint32 badge_id = 9;
+    required bool open_player_level = 10;
+    required uint32 title_text_id = 11;
+    optional string custom_txt = 12;
+    optional string group_name = 13;
+    required uint32 fav_ms_id = 14;
+    required uint32 skin_id = 15;
+    required uint32 ms_used_num = 16;
+    required string home_loc_name = 17;
+    required uint32 home_loc_pref = 18;
+  }
+}
+
+message RouteBattleTimeRank {
+  required uint64 sum_start = 1;
+  required uint64 sum_end = 2;
+  repeated nue.protocol.exvs.RouteBattleTimeRank.Row rows = 3;
+  message Row {
+    required uint32 rank_no = 1;
+    required uint32 prev_rank_no = 2;
+    required uint32 pilot_id = 3;
+    required string player_name = 4;
+    required uint32 clear_time = 5;
+    required uint32 battle_clear_num = 6;
+    required uint32 all_stage_clear_num = 7;
+    required uint32 player_level_id = 8;
+    required uint32 badge_id = 9;
+    required bool open_player_level = 10;
+    required uint32 title_text_id = 11;
+    optional string custom_txt = 12;
+    optional string group_name = 13;
+    required uint32 fav_ms_id = 14;
+    required uint32 skin_id = 15;
+    required uint32 ms_used_num = 16;
+    required string home_loc_name = 17;
+    required uint32 home_loc_pref = 18;
+  }
+}
+
+message GroupPointRank {
+  required uint64 sum_start = 1;
+  required uint64 sum_end = 2;
+  repeated nue.protocol.exvs.GroupPointRank.Row rows = 3;
+  message Row {
+    required uint32 rank_no = 1;
+    required uint32 prev_rank_no = 2;
+    required uint32 group_id = 3;
+    optional string group_name = 4;
+    required uint32 group_emblem_base_id = 5;
+    required uint32 group_emblem_parts_id = 6;
+    required uint32 group_emblem_effect_id = 7;
+    required uint32 score = 8;
+    repeated nue.protocol.exvs.GroupPointRank.PlayerInfo player_info = 9;
+    required string home_loc_name = 10;
+    required uint32 home_loc_pref = 11;
+  }
+  message PlayerInfo {
+    required uint32 pilot_id = 1;
+    required string player_name = 2;
+    required uint32 fav_ms_id = 3;
+    required uint32 skin_id = 4;
+    required uint32 class_id = 5;
+    required uint32 grade = 6;
+    required uint32 top_point_rank_num = 7;
+    required uint32 top_point_double_num = 8;
+  }
+}
+

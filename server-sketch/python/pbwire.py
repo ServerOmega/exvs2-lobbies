@@ -117,16 +117,16 @@ def decode(mtype, buf):
         else: raise ValueError('bad wire type %d' % wt)
         if num not in spec: continue
         fname, t, label, extra = spec[num]
+        if wt == 2 and t in (U32, ENUM, S64, BOOL):   # packed repeated (check first: val is bytes)
+            vals = []; j = 0
+            while j < len(val):
+                x, j = _rvarint(val, j); vals.append(_unzz(x) if t == S64 else x)
+            obj.setdefault(fname, []).extend(vals); continue
         if t == MSG: val = decode(extra, val)
         elif t == STR: val = bytes(val).decode('utf-8', 'replace')
         elif t == S64: val = _unzz(val)
         elif t == BOOL: val = bool(val)
         elif t == U32: val &= 0xffffffff
-        elif wt == 2 and t in (U32, ENUM):   # packed repeated
-            vals = []; j = 0
-            while j < len(val):
-                x, j = _rvarint(val, j); vals.append(x)
-            obj.setdefault(fname, []).extend(vals); continue
         if label == REP: obj.setdefault(fname, []).append(val)
         else: obj[fname] = val
     return obj

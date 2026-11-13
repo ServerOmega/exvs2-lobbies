@@ -4,6 +4,9 @@
   * `mms_server.py` — HTTP POST endpoint for Ping / IssueNodeId / EntryMatching / CheckMatching / CancelMatching / MatchingSetting.
   * `pbwire.py` — dependency-free proto2 codec for `nue.protocol.mms` (cross-checked against protoc-generated code).
   * `fake_cabinet.py` — simulates cabinets the way the game behaves; `python3 fake_cabinet.py --cabinets 4`.
+  * Ranked (Class Match G, worlds 13/14): `python3 fake_cabinet.py --ranked "2:3,2:3,3:1,3:1" [--team] [--report]`
+    (class:level per cabinet; `--report` exercises the internal `/result` MMR hook). See `../analysis/ranked-matching.md`.
+  * **Experimental — only tested against fake_cabinet.py, never against the real game.**
 * `csharp/` — **uncompiled** sketch in the Chiang-17 IB-Server style (ASP.NET Core + MediatR + protobuf-net), plus the RegisterPcb change.
 * `coturn/turnserver.conf` — STUN-only coturn config.
 

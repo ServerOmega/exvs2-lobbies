@@ -95,3 +95,10 @@ A cabinet uses MMS (this server) only when its active `testmode_pcb.json` settin
 (matchmaking.md §7.2). Other battleMode values use the in-store LAN path (LM / ≤16 terminals). No exe patch is
 needed; the home test is a config change. The WAN entry also carries a mode code per play mode (§7.3), so different
 play modes are naturally put in different queues by the existing (game, version, world_id, attr1) key.
+
+
+## Addendum 2026-11-13 (2) — ranked / Class Match G
+See `ranked-matching.md`. Ranked = EntryMatching with world_id 13 (solo) / 14 (team) and Player attrs
+{2: class_id, 4: matching level}. The prototype now keys ranked queues by class, pairs the closest level/MMR with a
+widening band, and keeps an optional hidden Elo fed by `POST /result` from the card server. Visible class/grade/rate
+are computed by the client and must be persisted by the card server (SaveVsmOnResult → PreLoadCard.LoadPlayer).

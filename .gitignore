@@ -21,3 +21,7 @@ lmnfig.ini
 # Editor / OS
 .DS_Store
 *.swp
+
+# Matchmaker runtime data (may hold player am_ids)
+mms_ratings.json
+*.tmp
