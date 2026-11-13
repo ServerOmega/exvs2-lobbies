@@ -1,6 +1,8 @@
 # exvs2-lobbies
 
 > ⚠️ **Experimental — work in progress. This does not function yet.**
+
+See [TESTING.md](TESTING.md) for the checklist of things that still need a real-game test.
 >
 > Nothing here is a working online service. The matchmaking server is an untested sketch,
 > the C# handlers are uncompiled, and the in-game WAN path has not been tried on a real cabinet.
