@@ -98,7 +98,9 @@ class Person:
         self.am = 7000000 + i                               # fake banapassport am id
         self.cls = rng.choice([1, 1, 2, 2, 2, 3, 3, 4])     # class 1..4 (inferred ids)
         self.level = rng.choice([1, 2, 2, 3, 3, 4])
-        self.ip = '198.18.%d.%d' % (i // 250, i % 250 + 1)  # benchmark range, not routable
+        # benchmark range, not routable. One public IP per shop (cabinets of a store share the router), so the
+        # server's in-store pool (shop code + public IP) sees one store per shop.
+        self.ip = '198.18.%d.%d' % (shop // 250, shop % 250 + 1)
         self.partner = None
         self.bad = False
         self.last_nodes = None

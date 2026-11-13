@@ -194,6 +194,36 @@ def realm_of(ip, realms=DEFAULT_REALMS):
         except ValueError: continue
     return 'internet'
 
+INSTORE_WORLDS = {15, 16}          # in-store match: only cabinets of ONE shop may meet (user requirement 2026-11-13)
+
+def parse_shop_keys(spec):
+    """'SHOPA=203.0.113.10/32 203.0.113.11/32,SHOPB=198.51.100.0/28' -> [(name, network)]."""
+    out = []
+    for part in (spec or '').split(','):
+        if '=' not in part: continue
+        name, cidrs = part.split('=', 1)
+        for c in cidrs.split():
+            try: out.append((name.strip(), ipaddress.ip_network(c.strip(), strict=False)))
+            except ValueError: pass
+    return out
+
+def shop_site(c, source=None, realms=DEFAULT_REALMS, shop_keys=()):
+    """Which shop a cabinet is in, for in-store match. The shop code the cabinet sends (attr2 = last 4 chars of
+    loc_id) is the same on every POC install (place_id JPN1), so it can't tell stores apart. A store's cabinets
+    share one public IP, so: configured shop key > STUN public IP (internet realm) > realm name (LAN / overlay
+    STUN = one virtual store) > HTTP source IP > 'unknown'."""
+    ips = [_norm_ip(c.get('global_ipaddress')), _norm_ip(source)]
+    for ip in ips:
+        try: a = ipaddress.ip_address(ip)
+        except ValueError: continue
+        for name, net in shop_keys:
+            if a in net: return 'shop:' + name
+    g = ips[0]
+    r = realm_of(g, realms) if realms else ('unknown' if g in ('', '0.0.0.0') else 'internet')
+    if r == 'internet': return 'ip:' + g
+    if r != 'unknown': return 'realm:' + r
+    return 'src:' + ips[1] if ips[1] else 'unknown'
+
 def same_cabinet(a, b):
     """pcb_serial alone is NOT unique across stores / homes: the POC hook defaults every install to serial
     0001 (-> same pcb_serial), so terminal 1 of every LM looks alike. Same cabinet = same serial AND same
@@ -307,9 +337,11 @@ class Matchmaker:
        empty seats are expected to be CPU-controlled by the cabinets [L - open question for a live test].
        group_id is decided by the server: the client only derives "same team as the first listed client"."""
     def __init__(self, ratings=None, fill_after=FILL_AFTER, partial=True, seed=None, stale_after=STALE_AFTER,
-                 realms=DEFAULT_REALMS):
+                 realms=DEFAULT_REALMS, shop_keys=(), instore_scope='site'):
         import random
         self.lock = threading.Lock()
+        self.shop_keys = list(shop_keys)   # [(name, ip_network)] override: several public IPs = one shop
+        self.instore_scope = instore_scope # 'site' (shop code + shop site) or 'shop-code' (shop code only)
         self.realms = realms           # None = realm matching off (everyone in one pool per mode)
         self.stale_after = stale_after
         self.ended = {}        # node_id -> time its unit was dropped by the server (-> MATCH_CANCELED once)
@@ -327,6 +359,8 @@ class Matchmaker:
     def entry(self, e, now, source=None):
         t = Unit(e, now, self.ratings)
         t.set_realms(self.realms)
+        if t.world in INSTORE_WORLDS and self.instore_scope == 'site':
+            t.key += (shop_site(e['myclient'], source, self.realms, self.shop_keys),)   # different stores never meet
         t.src = {t.leader: _norm_ip(source)} if source else {}
         if not e['myclient'].get('node_id'):
             return ERR_NODEID                                         # never issued by IssueNodeId
@@ -621,12 +655,15 @@ def main():
     ap.add_argument('--realms', default=None,
                     help="network realms 'name=cidr,...' (default: radmin 26/8, hamachi 25/8, 100.64/10, private "
                          "ranges = lan, rest = internet); 'off' = one pool regardless of network")
+    ap.add_argument('--shop-keys', default='', help="in-store shops: 'NAME=cidr cidr,NAME2=cidr' (a shop on several public IPs)")
+    ap.add_argument('--instore-scope', choices=['site', 'shop-code'], default='site',
+                    help="in-store match pool: 'site' = shop code + public IP / shop key (default), 'shop-code' = code only")
     ap.add_argument('-v', action='store_true')
     a = ap.parse_args()
     logging.basicConfig(level=logging.DEBUG if a.v else logging.INFO, format='%(asctime)s %(name)s %(message)s')
     nodes = NodeIdAllocator(a.state)
     mm = Matchmaker(RatingStore(a.ratings), a.fill_after, not a.no_partial, stale_after=max(a.stale_after, 3 * POLL_INTERVAL),
-                    realms=parse_realms(a.realms))
+                    realms=parse_realms(a.realms), shop_keys=parse_shop_keys(a.shop_keys), instore_scope=a.instore_scope)
     mm.first_node_this_run = nodes.first_this_run
     mm.verbose = a.v                   # -v: also log every CheckMatching result
     mms = Mms(nodes, mm)

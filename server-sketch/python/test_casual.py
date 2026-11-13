@@ -2,7 +2,7 @@
 """Deterministic tests for the casual/shuffle matcher in mms_server.py (no network, injected clock).
 Run: python3 test_casual.py      EXPERIMENTAL: shapes follow static analysis, untested in game."""
 import unittest
-from mms_server import (realm_of, parse_realms, same_cabinet, net_class, net_desc, dial_addr, match_net_line, Matchmaker, RatingStore, SUCCESS, MATCH_CANCELED, NPC_SERIAL, ERR_MATCH_NOENTRY,
+from mms_server import (shop_site, parse_shop_keys, realm_of, parse_realms, same_cabinet, net_class, net_desc, dial_addr, match_net_line, Matchmaker, RatingStore, SUCCESS, MATCH_CANCELED, NPC_SERIAL, ERR_MATCH_NOENTRY,
                         ERR_DUPLICATE_ENTRY, ERR_NODEID)
 
 _n = [100]
@@ -353,6 +353,49 @@ class UniversalLmAndOnline(unittest.TestCase):
 
     def test_net_line_shows_realm(self):
         self.assertIn('realm=radmin', net_desc({'node_id': 1, 'global_ipaddress': '26.1.1.1'}))
+
+class InStorePerShop(unittest.TestCase):
+    """In-store match (15/16) stays inside one shop although every POC install sends loc JPN1."""
+    def e(self, world, g, local, sortie='S'):
+        x = entry(world, sortie, attr2=0x4e31, loc='JPN1')               # same shop code everywhere
+        x['myclient'].update(global_ipaddress=g, local_ipaddress=local)
+        for grp in x['groups']: grp['client'].update(global_ipaddress=g)
+        return x
+
+    def mm(self, **kw):
+        return Matchmaker(RatingStore(), seed=1, stale_after=1e6, **kw)
+
+    def test_shop_site(self):
+        c = lambda g: {'global_ipaddress': g}
+        self.assertEqual(shop_site(c('203.0.113.10')), 'ip:203.0.113.10')
+        self.assertEqual(shop_site(c('26.0.0.5')), 'realm:radmin')
+        self.assertEqual(shop_site(c('192.168.1.5')), 'realm:lan')
+        self.assertEqual(shop_site(c(''), '198.51.100.9'), 'src:198.51.100.9')
+        keys = parse_shop_keys('SHOPA=203.0.113.10/32 203.0.113.11/32')
+        self.assertEqual(shop_site(c('203.0.113.11'), shop_keys=keys), 'shop:SHOPA')
+
+    def test_two_stores_never_meet_in_store_but_do_online(self):
+        for world, rooms in ((15, 2), (23, 1)):
+            mm = self.mm()
+            for i in range(2): mm.entry(self.e(world, '203.0.113.10', '192.168.10.%d' % i), 0)
+            for i in range(2): mm.entry(self.e(world, '198.51.100.20', '192.168.20.%d' % i), 0)
+            mm.check(mm.queue[0].leader if mm.queue else 0, 31)
+            self.assertEqual(len(mm.rooms), rooms, world)
+            for r in mm.rooms.values(): self.assertEqual(r['humans'], 4 if world == 23 else 2)
+        # one store's 4 cabinets fill an in-store 2v2
+        mm = self.mm()
+        for i in range(4): mm.entry(self.e(15, '203.0.113.10', '192.168.10.%d' % i), 0)
+        self.assertEqual(len(mm.rooms), 1)
+
+    def test_shop_on_two_public_ips_with_shop_keys(self):
+        mm = self.mm(shop_keys=parse_shop_keys('SHOPA=203.0.113.10/32 203.0.113.11/32'))
+        for i in range(4): mm.entry(self.e(15, '203.0.113.1%d' % (i % 2), '192.168.10.%d' % i), 0)
+        self.assertEqual(len(mm.rooms), 1)
+
+    def test_shop_code_scope_is_old_behaviour(self):
+        mm = self.mm(instore_scope='shop-code')
+        for i in range(4): mm.entry(self.e(15, '203.0.113.%d' % (10 + i), '192.168.1.%d' % i), 0)
+        self.assertEqual(len(mm.rooms), 1)
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)

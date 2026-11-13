@@ -8,8 +8,12 @@
 > disassembly, 2026-11-13) or in the EXVS2-POC source (commit 2343795) · **[M]** likely, from code reading ·
 > **[L]** inferred / not traced. Box tests used fake cabinets only (fake serials and card ids, documentation IPs).
 
-"LM" here means the **Live Monitor**, the store's master machine for in-store (LAN) play (`CAcSeqLmRoot`,
-`CAcSeqLmFaciliator`). It is the same exe started in the LM role.
+"LM" here means the **store's LM machine** (Live Monitor), the master machine for in-store (LAN) play
+(`CAcSeqLmRoot`, `CAcSeqLmFaciliator`). It is the same exe started in the LM role. *(Confirmed by the user 2026-11-13.)*
+
+**User decisions (2026-11-13):** LM = the store's LM machine. **In-store match must stay limited to one shop**
+(implemented: §3.4). Where `battleMode` is set (LM or each cabinet) is not known yet, because nothing has been tested
+on real hardware yet (TESTING.md has the check).
 
 ## 1. Answers
 | Question | Answer |
@@ -17,7 +21,7 @@
 | Can several LMs (different stores / LANs) use the same matchmaking server at once? | **Yes.** The LM never talks to the MMS; each cabinet does, over plain HTTP (§2.2). The server sees cabinets, not LMs, so any number of stores can connect. Two fixes were needed for that to work (§3). |
 | Can LM players and non-LM players be matched together? | **Yes, in the online modes** (casual / free / mix / ranked worlds), as long as they can reach each other over UDP (same "network realm", §3.2). The box test put store, home and other-store players in the same rooms (§4). |
 | Can an in-store pair from an LM team up and fight online players? | **Yes on the server side.** A team sortie sends the partner in `groups` [C]. The server keeps that pair on one side and fills the other side with anyone (another pair or two solos). Whether the partner is found through the LM is not traced [L]. |
-| What can't be crossed? | (1) Players the network can't connect: e.g. a Radmin-overlay player vs an internet player (§3.2, workaround §5). (2) **In-store match** (worlds 15/16) is per shop by design: the cabinet sends a shop hash, so only same-shop players meet (§3.3). (3) Cabinets left on an LM LAN battleMode (≠ 0) never contact the MMS (§2.1). |
+| What can't be crossed? | (1) Players the network can't connect: e.g. a Radmin-overlay player vs an internet player (§3.2, workaround §5). (2) **In-store match** (worlds 15/16) is per shop, by design and by the user's decision. The server scopes it by shop code **and** the shop's public IP, because every POC install sends the same shop code (§3.4). (3) Cabinets left on an LM LAN battleMode (≠ 0) never contact the MMS (§2.1). |
 
 ## 2. What the exe does
 ### 2.1 LAN (LM) vs online is per setting entry [C]
@@ -76,11 +80,37 @@ they play from. Config: C# `OnlineMatching.NetworkRealms` (`""` defaults, `"off"
 |---|---|
 | Mode | one queue per game id + version + world (mode) + attr1 |
 | Ranked (13/14) | same class; level / MMR bands widen with wait |
-| In-store (15/16), shop-setting (17), tag worlds | attr2 must be equal. For 15/16 attr2 = shop hash from loc_id, so only same-shop players. With the POC's fixed loc_id **every POC install is the "same shop"** [M] |
+| In-store (15/16) | attr2 (shop hash from loc_id) must be equal **and** the shop site must be equal (§3.4) |
+| Shop-setting (17), tag worlds | attr2 must be equal |
 | Casual / mix (18–20, 23, 25) | attr2 soft (preferred for 15 s, then mixed) |
 | Store pair (team sortie) | always on one side; never split |
 | Blacklists | `bl_banapassport_am_ids`, `bl_loc_ids` (if the card server's LoadBlackList fills them) |
 | Same store opponents | allowed; they dial each other's LAN address (§2.3) |
+
+### 3.4 In-store match stays inside one shop (2026-11-13)
+The shop code (attr2 = last 4 chars of loc_id) is probably the same on every POC install (`JPN1`) [M], so on its
+own it would put **every store into one in-store pool**. Both servers now add a **shop site** to the in-store
+(worlds 15/16) queue key:
+
+| Order | Shop site | When |
+|---|---|---|
+| 1 | `shop:<name>` from `ShopKeys` | the cabinet's STUN global IP (or request source) is in a configured range |
+| 2 | `ip:<public IP>` | STUN global IP is an internet address: a store's cabinets share the router's public IP |
+| 3 | `realm:<lan / radmin / ...>` | STUN result is a LAN / overlay address: the whole LAN / overlay counts as one store |
+| 4 | `src:<request IP>` | no STUN result |
+
+Edge cases:
+* **A store on several public IPs** (dual WAN, load balancer, ISP changing the IP): its cabinets would be split.
+  Name the shop explicitly: C# `OnlineMatching.ShopKeys = "SHOPA=203.0.113.10/32 203.0.113.11/32"`, Python
+  `--shop-keys`. A range works too (`SHOPB=198.51.100.0/28`).
+* **Home players:** each home is its own "shop" (its own public IP). Two PCs at one home can play in-store with
+  each other; nobody else joins them. That matches "one shop".
+* **Server and STUN on the store LAN** (LAN STUN results): the LAN is one shop (`realm:lan`). If one server on a
+  LAN serves several stores' VLANs, split them with `ShopKeys`.
+* **Stores behind one carrier-grade NAT IP** would share a site. Unlikely for stores; fix with `ShopKeys` if it happens.
+* `InStoreScope = "ShopCode"` (Python `--instore-scope shop-code`) restores the old shop-code-only pool.
+
+The online modes (casual / mix / ranked) are unchanged: different stores still meet there.
 
 ## 4. Box test: 14 fake players on one server (`server-sketch/loadtest/lm_mix.py`)
 Groups: **LM-A** = 1 store, 4 cabinets on one public IP (A1+A2 enter as an in-store pair, A3/A4 solo).
@@ -102,8 +132,17 @@ room 3: team 0 LM-D/1 + LM-E/1   vs  team 1 LM-A/4 + HOME/4
 room 4: RADMIN/1 vs RADMIN/2 (1v1 after FillAfterSeconds: no reachable partners outside the overlay)
 matched 14/14 players in 4 rooms; invariants OK
 ```
+**In-store case** (`lm_mix.py --case instore`): 3 stores with 4 + 2 + 2 cabinets, all sending shop code `JPN1`:
+
+| Mode / build | Result |
+|---|---|
+| In-store (world 15), shop-code only (old) | 2 rooms, **both mixing all 3 stores** |
+| In-store (world 15), new, C# and Python | 3 rooms: store A 2v2, store F 1v1, store G 1v1; **no store mixing** |
+| Mix Match (world 23), same 8 cabinets, new | 2 rooms of 4, **stores mixed** (online modes cross stores) |
+
 Arriving group by group (`--no-interleave`) gives rooms of one group each (FIFO); both are valid.
-Regression checks after the change: unit tests C# 33 / Python 36 pass, disconnect probes 14/14 (C#) and 13/13
+Regression checks: unit tests C# 37 / Python 40 pass, 100-cabinet load test 0 violations (the load test now gives
+the cabinets of one shop one shared public IP, like a real store). Earlier, for the serial + IP change: unit tests C# 33 / Python 36 pass, disconnect probes 14/14 (C#) and 13/13
 (Python), 100-cabinet load test with 0 violations. One probe needed a harness fix (it reported the partner's
 address differently from the partner's own entries; see §3.1 risk).
 
@@ -123,6 +162,8 @@ python3 server-sketch/loadtest/lm_mix.py --url http://127.0.0.1:5000/mms
 | Two symmetric-NAT / CGNAT players | hole punching fails | port-forward UDP 48000(+terminal), or an overlay with relays |
 
 ## 6. To verify in the real game
+0. **Where battleMode is set:** on the LM (`testmode_lm.json` / LM test menu, pushed to the terminals) or on each
+   cabinet (`testmode_pcb.json`), and what the LM machine itself does when battleMode is 0 (TESTING.md).
 1. With `battleMode: 0` on an LM-attached cabinet: does it still use the LM for anything during online matching
    (card entry, team decision)? Does the in-store partner end up in `groups`? Keep the `NET entry` lines of both cabinets.
 2. The loc_id a POC cabinet sends (one IssueNodeId / Entry log line): is it the same on two different installs?
@@ -131,9 +172,8 @@ python3 server-sketch/loadtest/lm_mix.py --url http://127.0.0.1:5000/mms
 4. Store pair vs online players: MATCH-NET shows `local same-NAT` for the pair, and the battle starts.
 5. In-store match (worlds 15/16) from two different installs: matched together (same POC loc) or not?
 
-## 7. Open questions for the user
-* Does "LM" mean the Live Monitor machine (this doc), or the community "LM" LAN over Radmin/N2N? The answer is the
-  same server design, but the Radmin case hits the realm rule (§5).
-* At a store, is battleMode set on the LM or on each cabinet in your setup?
-* Should in-store match (worlds 15/16) stay per shop, or would you like it as one big cross-store pool? The server
-  could key it by public IP instead of the shop hash.
+## 7. Answered / open
+* LM = the store's LM machine. **Answered.**
+* In-store match stays per shop. **Answered, implemented (§3.4).**
+* Where battleMode is set in a store setup: **open**, to find out in the first real test (§6 step 0).
+* Does a store have more than one public IP? If yes, add it to `ShopKeys`.

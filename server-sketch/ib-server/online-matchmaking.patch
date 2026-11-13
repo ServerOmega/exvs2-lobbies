@@ -1,4 +1,4 @@
-From d08b7274aec234175cc0822613e5c9101beacae3 Mon Sep 17 00:00:00 2001
+From 46f2cf5f59c4858078e5c4d44e3d60923d7e15c1 Mon Sep 17 00:00:00 2001
 From: ServerOmega <69215510+ServerOmega@users.noreply.github.com>
 Date: Fri, 13 Nov 2026 07:32:41 -0800
 Subject: [PATCH] Online matchmaking (experimental): STUN+MMS in RegisterPcb,
@@ -6,7 +6,7 @@ Subject: [PATCH] Online matchmaking (experimental): STUN+MMS in RegisterPcb,
  persistence, Linux build option; load-test fixes
 
 ---
- ONLINE_MATCHMAKING.md                         | 107 ++++
+ ONLINE_MATCHMAKING.md                         | 112 ++++
  .../LoadPlayer/SoloClassInformationCommand.cs |   2 +
  .../LoadPlayer/TeamClassInformationCommand.cs |   2 +
  Server-Infinite/Configurations/server.json    |  17 +
@@ -17,19 +17,19 @@ Subject: [PATCH] Online matchmaking (experimental): STUN+MMS in RegisterPcb,
  .../Match/MatchIssueNodeIdCommandHandler.cs   |  42 +-
  .../Match/MatchingQueueCommandHandlers.cs     | 111 ++++
  .../Match/MatchingSettingCommandHandler.cs    |   3 +-
- Server-Infinite/Matchmaking/Matchmaker.cs     | 460 +++++++++++++++
- Server-Infinite/Matchmaking/NetDiag.cs        | 102 ++++
+ Server-Infinite/Matchmaking/Matchmaker.cs     | 468 ++++++++++++++
+ Server-Infinite/Matchmaking/NetDiag.cs        | 133 ++++
  .../Matchmaking/NodeIdAllocator.cs            |  61 ++
  .../20261113000000_AddClassMatchGrade.cs      |  37 ++
  .../ServerDbContextModelSnapshot.cs           |   6 +
  .../Cards/Battle/BaseClassMatchRecord.cs      |   5 +
  .../Models/Config/CardServerConfig.cs         |   3 +
- .../Config/OnlineMatchingConfigurations.cs    |  65 +++
- Server-Infinite/Program.cs                    |  29 +-
+ .../Config/OnlineMatchingConfigurations.cs    |  73 +++
+ Server-Infinite/Program.cs                    |  31 +-
  Server-Infinite/Server-Infinite.csproj        |  11 +
- Tests/Matchmaking.Tests/MatchmakerTests.cs    | 528 ++++++++++++++++++
+ Tests/Matchmaking.Tests/MatchmakerTests.cs    | 577 ++++++++++++++++++
  .../Matchmaking.Tests.csproj                  |  19 +
- 23 files changed, 1828 insertions(+), 46 deletions(-)
+ 23 files changed, 1931 insertions(+), 46 deletions(-)
  create mode 100644 ONLINE_MATCHMAKING.md
  create mode 100644 Server-Infinite/Handlers/Match/MatchingQueueCommandHandlers.cs
  create mode 100644 Server-Infinite/Matchmaking/Matchmaker.cs
@@ -42,10 +42,10 @@ Subject: [PATCH] Online matchmaking (experimental): STUN+MMS in RegisterPcb,
 
 diff --git a/ONLINE_MATCHMAKING.md b/ONLINE_MATCHMAKING.md
 new file mode 100644
-index 0000000..90a28df
+index 0000000..2a72884
 --- /dev/null
 +++ b/ONLINE_MATCHMAKING.md
-@@ -0,0 +1,107 @@
+@@ -0,0 +1,112 @@
 +# Online matchmaking patch (exvs2-lobbies) — EXPERIMENTAL, NOT WORKING IN-GAME YET
 +
 +> ⚠️ This branch has **never been tested with the real game**. Everything is based on static analysis of the
@@ -87,7 +87,9 @@ index 0000000..90a28df
 +  "StaleAfterSeconds": 20,     // drop a waiting cabinet that stopped polling (min 3 x poll interval)
 +  "ClassMatchScheduleMode": "Both",  // Both | Hours | UnixTime
 +  "VerboseLog": false,         // true = also one line per CheckMatching poll (debugging only)
-+  "NetworkRealms": ""          // "" = default realms, "off" = none, or "name=cidr,name=cidr"
++  "NetworkRealms": "",         // "" = default realms, "off" = none, or "name=cidr,name=cidr"
++  "InStoreScope": "Site",      // in-store match per shop: shop code + shop's public IP; "ShopCode" = code only
++  "ShopKeys": ""               // shops on several IPs: "SHOPA=203.0.113.10/32 203.0.113.11/32,SHOPB=198.51.100.0/28"
 +}
 +```
 +Environment overrides also work, e.g. `CardServerConfig__OnlineMatching__Enabled=true` (env vars are
@@ -142,6 +144,9 @@ index 0000000..90a28df
 +  100.64/10 overlay, private/loopback = `lan`, everything else = `internet`) can't reach each other, so they
 +  are never put in one room. Same realm = one pool, whatever store / LM / home. `NetworkRealms: "off"` disables it.
 +  The NET log lines show `realm=`.
++* **In-store match stays inside one shop:** every POC install sends the same shop code (place id JPN1), so the
++  in-store worlds 15/16 are also keyed by the shop site: `ShopKeys` name > STUN public IP > LAN/overlay realm >
++  request source. Different stores never meet in in-store mode; they still meet in the online modes.
 +
 +## Known gaps / risks
 +* CheckMatching / CancelMatching are not authenticated: anyone who knows a node id can cancel that entry.
@@ -775,10 +780,10 @@ index f7dce78..a9abd37 100644
          return Task.FromResult(response);
 diff --git a/Server-Infinite/Matchmaking/Matchmaker.cs b/Server-Infinite/Matchmaking/Matchmaker.cs
 new file mode 100644
-index 0000000..d23154d
+index 0000000..e26795d
 --- /dev/null
 +++ b/Server-Infinite/Matchmaking/Matchmaker.cs
-@@ -0,0 +1,460 @@
+@@ -0,0 +1,468 @@
 +using nue.protocol.mms;
 +
 +namespace ServerInfinite.Matchmaking;
@@ -928,6 +933,12 @@ index 0000000..d23154d
 +    public uint FirstNodeThisRun { get; set; }
 +    /// <summary>Network realms (NetDiag.DefaultRealms by default). null = realm matching off: one pool per mode.</summary>
 +    public IReadOnlyList<(string Name, string Cidr)>? Realms { get; set; } = NetDiag.DefaultRealms;
++    /// <summary>In-store worlds: only cabinets of one shop may meet (shop code + <see cref="NetDiag.ShopSite"/>).</summary>
++    public static readonly HashSet<uint> InStoreWorlds = new() { 15, 16 };
++    /// <summary>"Site" (default): in-store pool = shop code + shop site; "ShopCode": shop code only (upstream-like).</summary>
++    public string InStoreScope { get; set; } = "Site";
++    /// <summary>Shop overrides: a shop on several public IPs / a range (see OnlineMatching.ShopKeys).</summary>
++    public IReadOnlyList<(string Name, System.Net.IPNetwork Net)> ShopKeys { get; set; } = Array.Empty<(string, System.Net.IPNetwork)>();
 +
 +    public Matchmaker(double fillAfter = 30, bool allowPartial = true, double softWait = 15, int seed = 0)
 +    {
@@ -944,6 +955,8 @@ index 0000000..d23154d
 +        var t = Unit.From(e, now);
 +        if (Realms != null)
 +            t.Realms = t.Humans.Select(c => NetDiag.Realm(c.GlobalIpaddress, Realms)).Where(r => r != "unknown").ToHashSet();
++        if (InStoreWorlds.Contains(t.World) && !string.Equals(InStoreScope, "ShopCode", StringComparison.OrdinalIgnoreCase))
++            t.Key += "|" + NetDiag.ShopSite(e.Myclient, sourceIp, Realms, ShopKeys);   // different stores never meet
 +        if (!string.IsNullOrEmpty(sourceIp)) t.SourceByNode[e.Myclient.NodeId] = NetDiag.Norm(sourceIp);
 +        lock (_gate)
 +        {
@@ -1241,10 +1254,10 @@ index 0000000..d23154d
 +}
 diff --git a/Server-Infinite/Matchmaking/NetDiag.cs b/Server-Infinite/Matchmaking/NetDiag.cs
 new file mode 100644
-index 0000000..0a0c7ec
+index 0000000..7403d44
 --- /dev/null
 +++ b/Server-Infinite/Matchmaking/NetDiag.cs
-@@ -0,0 +1,102 @@
+@@ -0,0 +1,133 @@
 +using nue.protocol.mms;
 +
 +namespace ServerInfinite.Matchmaking;
@@ -1295,6 +1308,37 @@ index 0000000..0a0c7ec
 +        if (string.IsNullOrEmpty(a.PcbSerial) || a.PcbSerial != b.PcbSerial) return false;
 +        string ga = Norm(a.GlobalIpaddress), gb = Norm(b.GlobalIpaddress);
 +        return ga is "" or "0.0.0.0" || gb is "" or "0.0.0.0" || ga == gb;
++    }
++
++    /// <summary>"SHOPA=203.0.113.10/32 203.0.113.11/32,SHOPB=198.51.100.0/28" -> (name, network) list.</summary>
++    public static List<(string Name, System.Net.IPNetwork Net)> ParseShopKeys(string? spec)
++    {
++        var list = new List<(string, System.Net.IPNetwork)>();
++        foreach (var part in (spec ?? "").Split(','))
++        {
++            var kv = part.Split('=', 2);
++            if (kv.Length != 2) continue;
++            foreach (var c in kv[1].Split(' ', StringSplitOptions.RemoveEmptyEntries))
++                if (System.Net.IPNetwork.TryParse(c.Trim(), out var net)) list.Add((kv[0].Trim(), net));
++        }
++        return list;
++    }
++
++    /// <summary>Which shop a cabinet is in, for in-store match. The shop code it sends (from loc_id) is the same on
++    /// every POC install (place_id JPN1), but a store's cabinets share one public IP. Order: configured shop key >
++    /// STUN public IP (internet realm) > realm name (LAN / overlay STUN = one virtual store) > HTTP source > unknown.</summary>
++    public static string ShopSite(Client c, string? source, IReadOnlyList<(string Name, string Cidr)>? realms,
++        IReadOnlyList<(string Name, System.Net.IPNetwork Net)> shopKeys)
++    {
++        string g = Norm(c.GlobalIpaddress), src = Norm(source);
++        foreach (var ip in new[] { g, src })
++            if (System.Net.IPAddress.TryParse(ip, out var a))
++                foreach (var (name, net) in shopKeys)
++                    if (net.Contains(a)) return "shop:" + name;
++        var r = realms != null ? Realm(g, realms) : g is "" or "0.0.0.0" ? "unknown" : "internet";
++        if (r == "internet") return "ip:" + g;
++        if (r != "unknown") return "realm:" + r;
++        return src != "" ? "src:" + src : "unknown";
 +    }
 +
 +    private static bool IsLoopback(string ip) => ip.StartsWith("127.") || ip is "::1" or "localhost";
@@ -1513,10 +1557,10 @@ index bf150d5..969bd29 100644
          var options = new JsonSerializerOptions
 diff --git a/Server-Infinite/Models/Config/OnlineMatchingConfigurations.cs b/Server-Infinite/Models/Config/OnlineMatchingConfigurations.cs
 new file mode 100644
-index 0000000..b343a51
+index 0000000..ba35833
 --- /dev/null
 +++ b/Server-Infinite/Models/Config/OnlineMatchingConfigurations.cs
-@@ -0,0 +1,65 @@
+@@ -0,0 +1,73 @@
 +namespace ServerInfinite.Models.Config;
 +
 +/// <summary>
@@ -1570,6 +1614,14 @@ index 0000000..b343a51
 +    /// "off" = no realm check.
 +    /// </summary>
 +    public string NetworkRealms { get; set; } = "";
++    /// <summary>
++    /// In-store match (worlds 15/16) pool. "Site" (default): shop code + shop site, so different stores never meet even
++    /// though every POC install sends the same place id (JPN1). The site is the cabinet's STUN public IP (a LAN / overlay
++    /// STUN result counts as one virtual store) unless <see cref="ShopKeys"/> names it. "ShopCode": shop code only.
++    /// </summary>
++    public string InStoreScope { get; set; } = "Site";
++    /// <summary>Shops on several public IPs (dual WAN, changing IP): "SHOPA=203.0.113.10/32 203.0.113.11/32,SHOPB=198.51.100.0/28".</summary>
++    public string ShopKeys { get; set; } = "";
 +
 +    /// <summary>
 +    /// LoadClassMatch schedule rows. IB appears to compare schedule start/end against the local HOUR
@@ -1583,7 +1635,7 @@ index 0000000..b343a51
 +    public bool PersistClassMatchResult { get; set; } = true;
 +}
 diff --git a/Server-Infinite/Program.cs b/Server-Infinite/Program.cs
-index 1745d32..bb32a0e 100644
+index 1745d32..bda49e2 100644
 --- a/Server-Infinite/Program.cs
 +++ b/Server-Infinite/Program.cs
 @@ -28,7 +28,9 @@ var failed = false;
@@ -1607,7 +1659,7 @@ index 1745d32..bb32a0e 100644
  
      builder.Services.AddOptions<CardServerConfig>()
          .Bind(builder.Configuration.GetSection(CardServerConfig.CARD_SERVER_SECTION))
-@@ -67,6 +71,29 @@ try
+@@ -67,6 +71,31 @@ try
      builder.Services.AddSingleton<ServerInfinite.Processor.Tracker.ITrackerCatalog>(sp =>
          new ServerInfinite.Processor.Tracker.TrackerCatalog(sp.GetRequiredService<IWebHostEnvironment>().WebRootFileProvider));
      builder.Services.AddMemoryCache();
@@ -1630,6 +1682,8 @@ index 1745d32..bb32a0e 100644
 +            Warn = message => logger.LogWarning("{Message}", message),
 +            Verbose = mm.VerboseLog,
 +            Realms = ServerInfinite.Matchmaking.NetDiag.ParseRealms(mm.NetworkRealms),
++            InStoreScope = mm.InStoreScope,
++            ShopKeys = ServerInfinite.Matchmaking.NetDiag.ParseShopKeys(mm.ShopKeys),
 +            StaleAfter = Math.Max(3 * Math.Max(1u, mm.PollingIntervalSeconds), mm.StaleAfterSeconds),
 +            FirstNodeThisRun = (alloc as ServerInfinite.Matchmaking.FileNodeIdAllocator)?.FirstThisRun ?? 0
 +        };
@@ -1661,10 +1715,10 @@ index 519b7c9..2206c64 100644
      <Compile Remove="Services\**" />
 diff --git a/Tests/Matchmaking.Tests/MatchmakerTests.cs b/Tests/Matchmaking.Tests/MatchmakerTests.cs
 new file mode 100644
-index 0000000..0259904
+index 0000000..9587550
 --- /dev/null
 +++ b/Tests/Matchmaking.Tests/MatchmakerTests.cs
-@@ -0,0 +1,528 @@
+@@ -0,0 +1,577 @@
 +using nue.protocol.mms;
 +using ServerInfinite.Matchmaking;
 +using Xunit;
@@ -2191,6 +2245,55 @@ index 0000000..0259904
 +        var off = New(); off.Realms = null;                                      // realm matching off: one pool
 +        foreach (var e in es) { e.Myclient.NodeId += 1000; off.Entry(e, 0); }
 +        Assert.Equal(0, off.QueueLength);
++    }
++
++    // ---- in-store match stays inside one shop although every POC install sends loc JPN1 ----
++
++    private Request.EntryMatching InStore(uint world, string global, string local)
++    {
++        var e = Entry(world, attr2: 0x4e31);
++        e.Myclient.LocId = "JPN1"; e.Myclient.GlobalIpaddress = global; e.Myclient.LocalIpaddress = local;
++        return e;
++    }
++
++    [Fact]
++    public void ShopSiteOrder()
++    {
++        var keys = NetDiag.ParseShopKeys("SHOPA=203.0.113.10/32 203.0.113.11/32");
++        Client C(string g) { var c = Cl(1); c.GlobalIpaddress = g; return c; }
++        Assert.Equal("ip:203.0.113.10", NetDiag.ShopSite(C("203.0.113.10"), null, NetDiag.DefaultRealms, keys.Take(0).ToList()));
++        Assert.Equal("shop:SHOPA", NetDiag.ShopSite(C("203.0.113.11"), null, NetDiag.DefaultRealms, keys));
++        Assert.Equal("realm:radmin", NetDiag.ShopSite(C("26.0.0.5"), null, NetDiag.DefaultRealms, keys));
++        Assert.Equal("src:198.51.100.9", NetDiag.ShopSite(C(""), "198.51.100.9", NetDiag.DefaultRealms, keys));
++    }
++
++    [Theory]
++    [InlineData(15u, 2, 2)]   // in-store: two 1v1s, one per store (after FillAfter)
++    [InlineData(23u, 1, 4)]   // online mix: the two stores meet in one 2v2
++    public void TwoStoresWithTheSameShopCode(uint world, int rooms, int humansPerRoom)
++    {
++        var mm = New();
++        var es = new List<Request.EntryMatching>();
++        for (var i = 0; i < 2; i++) es.Add(InStore(world, "203.0.113.10", $"192.168.10.{i}"));
++        for (var i = 0; i < 2; i++) es.Add(InStore(world, "198.51.100.20", $"192.168.20.{i}"));
++        es.ForEach(e => mm.Entry(e, 0));
++        var got = es.Select(e => mm.Check(e.Myclient.NodeId, 31).Room).Where(r => r != null).Distinct().ToList();
++        Assert.Equal(rooms, got.Count);
++        Assert.All(got, r => Assert.Equal(humansPerRoom, r!.Clients.Count));
++    }
++
++    [Fact]
++    public void OneStoreFillsAnInStoreRoomAndShopKeysJoinTwoIps()
++    {
++        var mm = New();
++        for (var i = 0; i < 4; i++) mm.Entry(InStore(15, "203.0.113.10", $"192.168.10.{i}"), 0);
++        Assert.Equal(0, mm.QueueLength);
++        var keyed = New(); keyed.ShopKeys = NetDiag.ParseShopKeys("SHOPA=203.0.113.10/32 203.0.113.11/32");
++        for (var i = 0; i < 4; i++) keyed.Entry(InStore(15, $"203.0.113.1{i % 2}", $"192.168.10.{i}"), 0);
++        Assert.Equal(0, keyed.QueueLength);
++        var code = New(); code.InStoreScope = "ShopCode";
++        for (var i = 0; i < 4; i++) code.Entry(InStore(15, $"203.0.113.{20 + i}", "192.168.1.10"), 0);
++        Assert.Equal(0, code.QueueLength);
 +    }
 +}
 diff --git a/Tests/Matchmaking.Tests/Matchmaking.Tests.csproj b/Tests/Matchmaking.Tests/Matchmaking.Tests.csproj
