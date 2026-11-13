@@ -1,0 +1,1510 @@
+From 77239c496d7b51f21137b7e90ae6e961c605e5d3 Mon Sep 17 00:00:00 2001
+From: ServerOmega <69215510+ServerOmega@users.noreply.github.com>
+Date: Fri, 13 Nov 2026 07:32:41 -0800
+Subject: [PATCH] Online matchmaking (experimental): STUN+MMS in RegisterPcb,
+ Entry/Check/Cancel matchmaker, IB class-match tables, ranked result
+ persistence, Linux build option
+
+---
+ ONLINE_MATCHMAKING.md                         |  50 +++
+ .../LoadPlayer/SoloClassInformationCommand.cs |   2 +
+ .../LoadPlayer/TeamClassInformationCommand.cs |   2 +
+ Server-Infinite/Configurations/server.json    |  16 +
+ .../Controllers/MatchController.cs            |   9 +-
+ .../Game/LoadClassMatchCommandHandler.cs      | 107 +++++-
+ .../Online/SaveVsmOnResultCommandHandler.cs   |  72 ++++
+ .../Game/RegisterPcbCommandHandler.cs         |  51 +++
+ .../Match/MatchIssueNodeIdCommandHandler.cs   |  42 +--
+ .../Match/MatchingQueueCommandHandlers.cs     | 104 ++++++
+ .../Match/MatchingSettingCommandHandler.cs    |   3 +-
+ Server-Infinite/Matchmaking/Matchmaker.cs     | 349 ++++++++++++++++++
+ .../Matchmaking/NodeIdAllocator.cs            |  56 +++
+ .../20261113000000_AddClassMatchGrade.cs      |  37 ++
+ .../ServerDbContextModelSnapshot.cs           |   6 +
+ .../Cards/Battle/BaseClassMatchRecord.cs      |   5 +
+ .../Models/Config/CardServerConfig.cs         |   3 +
+ .../Config/OnlineMatchingConfigurations.cs    |  54 +++
+ Server-Infinite/Program.cs                    |  19 +
+ Server-Infinite/Server-Infinite.csproj        |  11 +
+ Tests/Matchmaking.Tests/MatchmakerTests.cs    | 170 +++++++++
+ .../Matchmaking.Tests.csproj                  |  19 +
+ 22 files changed, 1143 insertions(+), 44 deletions(-)
+ create mode 100644 ONLINE_MATCHMAKING.md
+ create mode 100644 Server-Infinite/Handlers/Match/MatchingQueueCommandHandlers.cs
+ create mode 100644 Server-Infinite/Matchmaking/Matchmaker.cs
+ create mode 100644 Server-Infinite/Matchmaking/NodeIdAllocator.cs
+ create mode 100644 Server-Infinite/Migrations/20261113000000_AddClassMatchGrade.cs
+ create mode 100644 Server-Infinite/Models/Config/OnlineMatchingConfigurations.cs
+ create mode 100644 Tests/Matchmaking.Tests/MatchmakerTests.cs
+ create mode 100644 Tests/Matchmaking.Tests/Matchmaking.Tests.csproj
+
+diff --git a/ONLINE_MATCHMAKING.md b/ONLINE_MATCHMAKING.md
+new file mode 100644
+index 0000000..f9b0d34
+--- /dev/null
++++ b/ONLINE_MATCHMAKING.md
+@@ -0,0 +1,50 @@
++# Online matchmaking patch (exvs2-lobbies) — EXPERIMENTAL, NOT WORKING IN-GAME YET
++
++> ⚠️ This branch has **never been tested with the real game**. Everything is based on static analysis of the
++> IB exe ([exvs2-lobbies](https://github.com/ServerOmega/exvs2-lobbies)) and on fake-cabinet tests.
++> You must already have a copy of the game. Upstream: Chiang-17/EXVS2-IB-Server (v1.2.0, commit 7f4b280).
++
++## What this changes
++| Area | Upstream | This patch |
++|---|---|---|
++| RegisterPcb | SRV_MATCH `"{host}/match"`, no STUN | when `OnlineMatching.Enabled`: SRV_MATCH = full URL (`MatchUrl` or `http://{host}/match`) + **SRV_STUN** entry (`StunHost`/`StunPort`) |
++| MMS `/match` (`/mms` alias) | Ping, IssueNodeId → `[1]`, MatchingSetting; everything else `ERR_SERVER` | IssueNodeId → unique persisted ids (≥ issue_count); **EntryMatching / CheckMatching / CancelMatching** with an in-memory 2v2 matchmaker |
++| Matchmaker | — | per-mode queues (world id + attrs), solo shuffle, fixed pairs never split, CPU stand-ins, ranked (worlds 13/14) bucketed by class with level band widening 0→1→2→any at 0/15/35/60 s, blacklists, optional 1v1/2v1 after `FillAfterSeconds` |
++| LoadClassMatch | 1 unix-time schedule row, empty pattern & search-ratio tables | hour row (0–27) **and** unix row → pattern 1; grade→level pattern rows for classes 1–4; search ratios; request table |
++| SaveVsmOnResult | badge only | also stores Class Match `after_rate`, class, grade and class win/lose (OMM_CLASS) |
++| PreLoadCard | `grade_solo/team` always 0 | returns the stored grade |
++| DB | — | migration `AddClassMatchGrade` (adds `Grade` to both class-record tables) |
++| Build | Windows only | optional Linux build: `-p:LinuxHost=true` (drops the WinForms disclaimer dialog) |
++
++## Build
++```
++# Windows (as upstream):           dotnet publish Server-Infinite -c Release -r win-x64
++# Linux host:                      dotnet build Server-Infinite -p:LinuxHost=true -o out && cd out && dotnet Server-Infinite.dll
++# Cross-check Windows build on Linux: dotnet build Server-Infinite -p:EnableWindowsTargeting=true -r win-x64
++# Matchmaker unit tests:           dotnet test Tests/Matchmaking.Tests
++```
++.NET 9 SDK required. Note `.gitignore` excludes `wwwroot/` image resources (needed only for the web UI).
++
++## Configure (`Configurations/server.json` → `CardServerConfig.OnlineMatching`)
++```json
++"OnlineMatching": {
++  "Enabled": true,
++  "MatchUrl": "",              // "" = built-in MMS at http://<host the cabinet used>/match
++                               // or e.g. "http://203.0.113.10:5000/mms" for the external Python server
++  "StunHost": "203.0.113.10",  // coturn; IP literal recommended ("" = same host as this server)
++  "StunPort": 3478,
++  "StunUser": "", "StunPass": "",
++  "PollingIntervalSeconds": 3,
++  "FillAfterSeconds": 30, "AllowPartialRooms": true,
++  "ClassMatchScheduleMode": "Both"   // Both | Hours | UnixTime
++}
++```
++Environment overrides also work, e.g. `CardServerConfig__OnlineMatching__Enabled=true`.
++Cabinet side: `battleMode: 0` in the active `testmode_pcb.json` entry (online path instead of the LM).
++
++## Known gaps / risks
++* Hole-punch / P2P packet format unknown; real battles need reachable UDP (public IP/UPnP or a shared VPN).
++* Mode→world mapping, class ids (1–4) and the hour-based schedule are inferred, not observed.
++* `Grade1Solo/Team`, promotion matches, Extreme ladder (`LoadRankMatch`) untouched.
++* Hand-written migration has no Designer file (EF applies it; snapshot updated).
++* Matchmaker state is in memory; restart drops waiting players (node ids persist).
+diff --git a/Server-Infinite/Commands/PreLoadCard/LoadPlayer/SoloClassInformationCommand.cs b/Server-Infinite/Commands/PreLoadCard/LoadPlayer/SoloClassInformationCommand.cs
+index b7f4a55..0bb5876 100644
+--- a/Server-Infinite/Commands/PreLoadCard/LoadPlayer/SoloClassInformationCommand.cs
++++ b/Server-Infinite/Commands/PreLoadCard/LoadPlayer/SoloClassInformationCommand.cs
+@@ -25,6 +25,8 @@ public class SoloClassInformationCommand : IPreLoadPlayerCommand
+ 
+         loadPlayer.TopPointRankNumSolo = soloClassInformation.TopPointRankEntryCount;
+         loadPlayer.RateSolo = soloClassInformation.Rate;
++        // exvs2-lobbies: grade reported by the last ranked result (0 = never reported)
++        loadPlayer.GradeSolo = soloClassInformation.Grade;
+ 
+         if (soloClassInformation.ClassId < 4)
+         {
+diff --git a/Server-Infinite/Commands/PreLoadCard/LoadPlayer/TeamClassInformationCommand.cs b/Server-Infinite/Commands/PreLoadCard/LoadPlayer/TeamClassInformationCommand.cs
+index 7144ea7..f1eff92 100644
+--- a/Server-Infinite/Commands/PreLoadCard/LoadPlayer/TeamClassInformationCommand.cs
++++ b/Server-Infinite/Commands/PreLoadCard/LoadPlayer/TeamClassInformationCommand.cs
+@@ -25,6 +25,8 @@ public class TeamClassInformationCommand : IPreLoadPlayerCommand
+         
+         loadPlayer.TopPointRankNumTeam = teamClassInformation.TopPointRankEntryCount;
+         loadPlayer.RateTeam = teamClassInformation.Rate;
++        // exvs2-lobbies: grade reported by the last ranked result (0 = never reported)
++        loadPlayer.GradeTeam = teamClassInformation.Grade;
+         
+         if (teamClassInformation.ClassId < 4)
+         {
+diff --git a/Server-Infinite/Configurations/server.json b/Server-Infinite/Configurations/server.json
+index a043d3a..3b5b144 100644
+--- a/Server-Infinite/Configurations/server.json
++++ b/Server-Infinite/Configurations/server.json
+@@ -22,6 +22,22 @@
+       "RouteBattleConfigurations": {
+         "ResetBadgeExpOnChange": false
+       }
++    },
++    "OnlineMatching": {
++      "Enabled": false,
++      "MatchUrl": "",
++      "StunHost": "",
++      "StunPort": 3478,
++      "StunUser": "",
++      "StunPass": "",
++      "PollingIntervalSeconds": 3,
++      "FillAfterSeconds": 30,
++      "AllowPartialRooms": true,
++      "SoftAttributeWaitSeconds": 15,
++      "NodeIdStateFile": "mms_nodeids.json",
++      "FirstNodeId": 1000,
++      "ClassMatchScheduleMode": "Both",
++      "PersistClassMatchResult": true
+     }
+   }
+ }
+diff --git a/Server-Infinite/Controllers/MatchController.cs b/Server-Infinite/Controllers/MatchController.cs
+index d769e94..de1e4f8 100644
+--- a/Server-Infinite/Controllers/MatchController.cs
++++ b/Server-Infinite/Controllers/MatchController.cs
+@@ -16,7 +16,9 @@ public class MatchController : BaseController<MatchController>
+         _mediator = mediator;
+     }
+     
++    // exvs2-lobbies: "/mms" is an alias so a MatchUrl written for the Python server also works here.
+     [Route("match")]
++    [Route("mms")]
+     [HttpPost]
+     [Produces("application/protobuf")]
+     public async Task<IActionResult> Match([FromBody] Request request)
+@@ -28,6 +30,9 @@ public class MatchController : BaseController<MatchController>
+             MethodType.Ping => await _mediator.Send(new MatchPingCommand(request)),
+             MethodType.IssueNodeId => await _mediator.Send(new MatchIssueNodeIdCommand(request)),
+             MethodType.MatchingSetting => await _mediator.Send(new MatchingSettingCommand(request)),
++            MethodType.EntryMatching => await _mediator.Send(new EntryMatchingCommand(request)),
++            MethodType.CheckMatching => await _mediator.Send(new CheckMatchingCommand(request)),
++            MethodType.CancelMatching => await _mediator.Send(new CancelMatchingCommand(request)),
+             _ => UnhandledResponse(request)
+         };
+         
+@@ -39,8 +44,8 @@ public class MatchController : BaseController<MatchController>
+         return new Response
+         {
+             Type = request.Type,
+-            RequestId = request.RequestId,
+-            Code = ErrorCode.ErrServer
++            RequestId = request.RequestId ?? "",
++            Code = ErrorCode.ErrRequest
+         };
+     }
+ }
+\ No newline at end of file
+diff --git a/Server-Infinite/Handlers/Game/LoadClassMatchCommandHandler.cs b/Server-Infinite/Handlers/Game/LoadClassMatchCommandHandler.cs
+index 3939026..94f3f09 100644
+--- a/Server-Infinite/Handlers/Game/LoadClassMatchCommandHandler.cs
++++ b/Server-Infinite/Handlers/Game/LoadClassMatchCommandHandler.cs
+@@ -1,4 +1,6 @@
+ using MediatR;
++using Microsoft.Extensions.Options;
++using ServerInfinite.Models.Config;
+ using nue.protocol.exvs;
+ using ServerInfinite.Commands.ClassMatch;
+ using ServerInfinite.Commands.ClassMatch.SoloThreshold;
+@@ -13,11 +15,14 @@ public class LoadClassMatchCommandHandler : IRequestHandler<LoadClassMatchComman
+ {
+     private readonly ILogger<LoadClassMatchCommandHandler> _logger;
+     private readonly ServerDbContext _context;
++    private readonly OnlineMatchingConfigurations _online;
+ 
+-    public LoadClassMatchCommandHandler(ILogger<LoadClassMatchCommandHandler> logger, ServerDbContext context)
++    public LoadClassMatchCommandHandler(ILogger<LoadClassMatchCommandHandler> logger, ServerDbContext context,
++        IOptions<CardServerConfig> options)
+     {
+         _logger = logger;
+         _context = context;
++        _online = options.Value.OnlineMatching;
+     }
+     
+     public Task<Response> Handle(LoadClassMatchCommand command, CancellationToken cancellationToken)
+@@ -46,25 +51,8 @@ public class LoadClassMatchCommandHandler : IRequestHandler<LoadClassMatchComman
+             OverStartDate = (ulong)(DateTimeOffset.Now - TimeSpan.FromDays(10)).ToUnixTimeSeconds()
+         };
+         
+-        loadClassMatchResponse.ClassMatchingTimeSchedules.Add(new Response.LoadClassMatch.ClassMatchingTimeSchedule()
+-        {
+-            StartAt = (ulong)(DateTimeOffset.Now - TimeSpan.FromDays(10)).ToUnixTimeSeconds(),
+-            EndAt = (ulong)(DateTimeOffset.Now + TimeSpan.FromDays(365)).ToUnixTimeSeconds(),
+-            PatternId = 1
+-        });
+-        
+-        loadClassMatchResponse.ClassMatchingPatternTables.Add(new Response.LoadClassMatch.ClassMatchingPatternTable()
+-        {
+-            PatternId = 1
+-        });
+-        
+-        loadClassMatchResponse.ClassMatchingRequestTables.Add(new Response.LoadClassMatch.ClassMatchingRequest()
+-        {
+-            MakeRoomFlag = true,
+-            MatchingTryNum = 1,
+-            RoomSearchId = 1,
+-            SeqNum = 1
+-        });
++        // exvs2-lobbies: schedule / pattern / request tables that drive the ranked (Class Match G) search.
++        FillClassMatchingTables(loadClassMatchResponse);
+ 
+         var loadClassMatchCommands = new List<IClassMatchFillerCommand>()
+         {
+@@ -98,6 +86,85 @@ public class LoadClassMatchCommandHandler : IRequestHandler<LoadClassMatchComman
+         return Task.FromResult(response);
+     }
+     
++    /// <summary>
++    /// exvs2-lobbies / EXPERIMENTAL. The cabinet picks a schedule row covering "now", takes its pattern and looks up
++    /// (class, grade) -> level_id; level is sent to the MMS as attr4 (default 3 if nothing matches). IB seems to
++    /// compare against the local hour (0..27, arcade day) rather than unix time [static analysis], so by default
++    /// both an hour row and a unix row are sent, pointing at the same pattern.
++    /// Grade buckets: grades 10-8 -> level 1, 7-5 -> 2, 4-3 -> 3, 2-1 -> 4 (0 = unknown -> level 3).
++    /// </summary>
++    private void FillClassMatchingTables(Response.LoadClassMatch response)
++    {
++        const uint patternId = 1;
++        var mode = (_online.ClassMatchScheduleMode ?? "Both").Trim().ToLowerInvariant();
++        if (mode is "both" or "hours")
++        {
++            response.ClassMatchingTimeSchedules.Add(new Response.LoadClassMatch.ClassMatchingTimeSchedule
++            {
++                StartAt = 0, EndAt = 27, PatternId = patternId
++            });
++        }
++        if (mode is "both" or "unixtime" || response.ClassMatchingTimeSchedules.Count == 0)
++        {
++            response.ClassMatchingTimeSchedules.Add(new Response.LoadClassMatch.ClassMatchingTimeSchedule
++            {
++                StartAt = (ulong)(DateTimeOffset.Now - TimeSpan.FromDays(10)).ToUnixTimeSeconds(),
++                EndAt = (ulong)(DateTimeOffset.Now + TimeSpan.FromDays(365)).ToUnixTimeSeconds(),
++                PatternId = patternId
++            });
++        }
++
++        var gradeBuckets = new (uint Level, uint Start, uint End)[] { (1, 8, 10), (2, 5, 7), (3, 3, 4), (4, 1, 2), (3, 0, 0) };
++        var pattern = new Response.LoadClassMatch.ClassMatchingPatternTable { PatternId = patternId };
++        for (uint classId = 1; classId <= 4; classId++)
++        {
++            foreach (var (level, start, end) in gradeBuckets)
++            {
++                var row = new Response.LoadClassMatch.ClassMatchingPatternTable.ClassMatchingPattern
++                {
++                    ClassId = classId, LevelId = level, GradeIdStart = start, GradeIdEnd = end
++                };
++                pattern.ClassMatchingSoloes.Add(row);
++                if (classId >= 2) // Pilot (1) is solo-only per the official rules
++                {
++                    pattern.ClassMatchingTeams.Add(new Response.LoadClassMatch.ClassMatchingPatternTable.ClassMatchingPattern
++                    {
++                        ClassId = classId, LevelId = level, GradeIdStart = start, GradeIdEnd = end
++                    });
++                }
++            }
++        }
++        response.ClassMatchingPatternTables.Add(pattern);
++
++        // One room search id for everything: with a single central matcher "make room vs search" does not matter.
++        response.ClassMatchingRequestTables.Add(new Response.LoadClassMatch.ClassMatchingRequest
++        {
++            MakeRoomFlag = true,
++            MatchingTryNum = 3,
++            RoomSearchId = 1,
++            SeqNum = 1
++        });
++
++        response.search_ratios ??= new Response.LoadClassMatch.SearchRatioTable();
++        for (uint classId = 1; classId <= 4; classId++)
++        {
++            for (uint level = 1; level <= 4; level++)
++            {
++                response.search_ratios.search_ratio_solo.Add(new Response.LoadClassMatch.SearchRatioTable.SearchRatio
++                {
++                    ClassId = classId, LevelId = level, Num = 1, search_ratio = 1
++                });
++                if (classId >= 2)
++                {
++                    response.search_ratios.search_ratio_team.Add(new Response.LoadClassMatch.SearchRatioTable.SearchRatio
++                    {
++                        ClassId = classId, LevelId = level, Num = 1, search_ratio = 1
++                    });
++                }
++            }
++        }
++    }
++
+     DateTime GetNextMonday(DateTime start)
+     {
+         int daysToAdd = ((int) DayOfWeek.Monday - (int) start.DayOfWeek + 7) % 7;
+diff --git a/Server-Infinite/Handlers/Game/Online/SaveVsmOnResultCommandHandler.cs b/Server-Infinite/Handlers/Game/Online/SaveVsmOnResultCommandHandler.cs
+index 95a1404..5aedd51 100644
+--- a/Server-Infinite/Handlers/Game/Online/SaveVsmOnResultCommandHandler.cs
++++ b/Server-Infinite/Handlers/Game/Online/SaveVsmOnResultCommandHandler.cs
+@@ -1,5 +1,6 @@
+ using nue.protocol.exvs;
+ using ServerInfinite.Models.Cards;
++using ServerInfinite.Models.Cards.Battle;
+ using ServerInfinite.Persistence;
+ using MediatR;
+ using Microsoft.Extensions.Options;
+@@ -44,6 +45,10 @@ public class SaveVsmOnResultCommandHandler : IRequestHandler<SaveVsmOnResultComm
+                 SaveBadgeCommand badge = new SaveBadgeCommand(_context, _config, _logger);
+                 badge.Save(cardProfile, save.Result.ObtainedBadgePoint);
+                 badge.ApplyReportedBadge(cardProfile, save.Result.BadgeId, "SaveVsmOnResult");
++                if (_config.OnlineMatching.PersistClassMatchResult)
++                {
++                    SaveClassMatchResult(cardProfile, save);
++                }
+                 _context.SaveChanges();
+             }
+         }
+@@ -55,4 +60,71 @@ public class SaveVsmOnResultCommandHandler : IRequestHandler<SaveVsmOnResultComm
+             save_vsm_on_result = new Response.SaveVsmOnResult()
+         });
+     }
++
++    /// <summary>
++    /// exvs2-lobbies / EXPERIMENTAL (untested with the real game): Class Match G (OMM_CLASS) results.
++    /// The cabinet computes the new rate/grade/class itself and uploads them; the server only stores them and
++    /// returns them in the next PreLoadCard (rate_*, class_id_*, grade_*, class_*_win/lose).
++    /// shuffle_flag = solo (shuffle) class record, otherwise the team record.
++    /// </summary>
++    private void SaveClassMatchResult(CardProfile cardProfile, Request.SaveVsmOnResult save)
++    {
++        var result = save.Result;
++        if (result.OnlineMatchingMode != OnlineMatchingMode.OmmClass || result.class_match_result == null)
++        {
++            return;
++        }
++        var cmr = result.class_match_result;
++        var solo = save.ShuffleFlag;
++        BaseClassMatchRecord? record = solo
++            ? _context.SoloClassMatchRecordDbSet.FirstOrDefault(x => x.CardProfile == cardProfile)
++            : _context.TeamClassMatchRecordDbSet.FirstOrDefault(x => x.CardProfile == cardProfile);
++        if (record == null)
++        {
++            _logger.LogWarning("SaveVsmOnResult class match: no {Kind} class record for card {CardId}", solo ? "solo" : "team", cardProfile.Id);
++            return;
++        }
++
++        var newClass = solo ? cmr.ClassIdSolo : cmr.ClassIdTeam;
++        var rate = cmr.AfterRate;
++        if (!float.IsFinite(rate) || rate < 0f || rate > 100000f)
++        {
++            _logger.LogWarning("SaveVsmOnResult class match: ignoring implausible after_rate {Rate}", rate);
++            rate = record.Rate;
++        }
++
++        if (newClass is >= 1 and <= 4)
++        {
++            record.ClassChangeStatus = newClass > record.ClassId ? 1u : newClass < record.ClassId ? 2u : 0u;
++            record.ClassId = newClass;
++        }
++        record.Rate = rate;
++        if (cmr.GradeId is >= 1 and <= 10)
++        {
++            record.Grade = cmr.GradeId;
++        }
++        record.WeeklyTotalBattleCount++;
++        if (result.WinFlag)
++        {
++            record.WeeklyTotalWinCount++;
++        }
++
++        var winLoss = _context.WinLossRecordDbSet.FirstOrDefault(x => x.CardProfile == cardProfile);
++        if (winLoss != null)
++        {
++            if (solo)
++            {
++                if (result.WinFlag) winLoss.ClassSoloWin++; else winLoss.ClassSoloLose++;
++            }
++            else
++            {
++                if (result.WinFlag) winLoss.ClassTeamWin++; else winLoss.ClassTeamLose++;
++            }
++        }
++
++        _logger.LogInformation(
++            "SaveVsmOnResult class match card={CardId} {Kind} room={RoomId} win={Win} class={Class} grade={Grade} rate {Before}->{After} ({Obtained:+0.##;-0.##})",
++            cardProfile.Id, solo ? "solo" : "team", result.RoomId, result.WinFlag, record.ClassId, cmr.GradeId,
++            cmr.BeforeRate, record.Rate, cmr.ObtainedRate);
++    }
+ }
+diff --git a/Server-Infinite/Handlers/Game/RegisterPcbCommandHandler.cs b/Server-Infinite/Handlers/Game/RegisterPcbCommandHandler.cs
+index 20a4ff2..b99d42d 100644
+--- a/Server-Infinite/Handlers/Game/RegisterPcbCommandHandler.cs
++++ b/Server-Infinite/Handlers/Game/RegisterPcbCommandHandler.cs
+@@ -47,6 +47,57 @@ public class RegisterPcbCommandHandler : IRequestHandler<RegisterPcbCommand, Res
+             }
+         };
+ 
++        AddOnlineMatchingServers(response.register_pcb, command.BaseAddress);
++
+         return Task.FromResult(response);
+     }
++
++    /// <summary>
++    /// exvs2-lobbies / EXPERIMENTAL (untested with the real game):
++    /// the cabinet uses the SRV_MATCH uri verbatim as the full MMS URL (port ignored) and only starts
++    /// online matching (STUN + IssueNodeId) when an SRV_STUN entry is present.
++    /// </summary>
++    private void AddOnlineMatchingServers(Response.RegisterPcb registerPcb, string baseAddress)
++    {
++        var mm = _config.OnlineMatching;
++        if (!mm.Enabled)
++        {
++            return;
++        }
++
++        var matchUrl = string.IsNullOrWhiteSpace(mm.MatchUrl) ? $"http://{baseAddress}/match" : mm.MatchUrl.Trim();
++        var stunHost = string.IsNullOrWhiteSpace(mm.StunHost) ? HostOnly(baseAddress) : mm.StunHost.Trim();
++
++        registerPcb.ServerInfoes.Clear();
++        registerPcb.ServerInfoes.Add(new Response.RegisterPcb.ServerInfo
++        {
++            ServerType = ServerType.SrvMatch,
++            Uri = matchUrl,
++            Port = 0
++        });
++        var stun = new Response.RegisterPcb.ServerInfo
++        {
++            ServerType = ServerType.SrvStun,
++            Uri = stunHost,
++            Port = mm.StunPort
++        };
++        if (!string.IsNullOrEmpty(mm.StunUser))
++        {
++            stun.AccountName = mm.StunUser;
++            stun.AccountPass = mm.StunPass;
++        }
++        registerPcb.ServerInfoes.Add(stun);
++    }
++
++    private static string HostOnly(string baseAddress)
++    {
++        // "1.2.3.4:28080" -> "1.2.3.4", "[::1]:28080" -> "::1"
++        if (baseAddress.StartsWith('['))
++        {
++            var end = baseAddress.IndexOf(']');
++            return end > 0 ? baseAddress[1..end] : baseAddress;
++        }
++        var colon = baseAddress.LastIndexOf(':');
++        return colon > 0 ? baseAddress[..colon] : baseAddress;
++    }
+ }
+\ No newline at end of file
+diff --git a/Server-Infinite/Handlers/Match/MatchIssueNodeIdCommandHandler.cs b/Server-Infinite/Handlers/Match/MatchIssueNodeIdCommandHandler.cs
+index 876eb85..a9dc23e 100644
+--- a/Server-Infinite/Handlers/Match/MatchIssueNodeIdCommandHandler.cs
++++ b/Server-Infinite/Handlers/Match/MatchIssueNodeIdCommandHandler.cs
+@@ -1,38 +1,38 @@
+ using MediatR;
+-using Microsoft.Extensions.Caching.Memory;
+ using nue.protocol.mms;
+-using ServerInfinite.Persistence;
++using ServerInfinite.Matchmaking;
+ 
+ namespace ServerInfinite.Handlers.Match;
+ 
+ public record MatchIssueNodeIdCommand(Request Request) : IRequest<Response>;
+ 
++/// <summary>
++/// exvs2-lobbies: was "always [1]". The cabinet asks for issue_count = 2 and rejects replies with fewer
++/// ids; ids must be globally unique because each cabinet finds itself in CheckMatching by node_id.
++/// </summary>
+ public class MatchIssueNodeIdCommandHandler : IRequestHandler<MatchIssueNodeIdCommand, Response>
+ {
+-    private readonly IMemoryCache _memoryCache;
+-    private readonly ServerDbContext _context;
+-    
+-    public MatchIssueNodeIdCommandHandler(IMemoryCache memoryCache, ServerDbContext context)
++    private readonly INodeIdAllocator _ids;
++    private readonly ILogger<MatchIssueNodeIdCommandHandler> _logger;
++
++    public MatchIssueNodeIdCommandHandler(INodeIdAllocator ids, ILogger<MatchIssueNodeIdCommandHandler> logger)
+     {
+-        _memoryCache = memoryCache;
+-        _context = context;
++        _ids = ids;
++        _logger = logger;
+     }
+-    
++
+     public Task<Response> Handle(MatchIssueNodeIdCommand request, CancellationToken cancellationToken)
+     {
+-        var nodeList = new List<uint> { 1 };
+-        
+-        var response = new Response
++        var count = (int)Math.Clamp(request.Request.issue_node_id?.IssueCount ?? 1u, 1u, 16u);
++        var ids = _ids.Take(count);
++        _logger.LogInformation("MMS IssueNodeId x{Count} -> [{Ids}]", count, string.Join(",", ids));
++
++        return Task.FromResult(new Response
+         {
+             Type = request.Request.Type,
+-            RequestId = request.Request.RequestId,
++            RequestId = request.Request.RequestId ?? "",
+             Code = ErrorCode.Success,
+-            issue_node_id = new Response.IssueNodeId
+-            {
+-                NodeIds = nodeList.ToArray()
+-            }
+-        };
+-
+-        return Task.FromResult(response);
++            issue_node_id = new Response.IssueNodeId { NodeIds = ids }
++        });
+     }
+-}
+\ No newline at end of file
++}
+diff --git a/Server-Infinite/Handlers/Match/MatchingQueueCommandHandlers.cs b/Server-Infinite/Handlers/Match/MatchingQueueCommandHandlers.cs
+new file mode 100644
+index 0000000..fbbdb65
+--- /dev/null
++++ b/Server-Infinite/Handlers/Match/MatchingQueueCommandHandlers.cs
+@@ -0,0 +1,104 @@
++using MediatR;
++using Microsoft.Extensions.Options;
++using nue.protocol.mms;
++using ServerInfinite.Matchmaking;
++using ServerInfinite.Models.Config;
++
++namespace ServerInfinite.Handlers.Match;
++
++// exvs2-lobbies / EXPERIMENTAL: EntryMatching / CheckMatching / CancelMatching (upstream answered ERR_SERVER).
++// Shapes follow static analysis of vsac29 (analysis/matchmaking.md 2.2-2.4); never tested with the real game.
++
++public record EntryMatchingCommand(Request Request) : IRequest<Response>;
++public record CheckMatchingCommand(Request Request) : IRequest<Response>;
++public record CancelMatchingCommand(Request Request) : IRequest<Response>;
++
++internal static class MmsClock
++{
++    public static double Now => DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() / 1000.0;
++}
++
++public class EntryMatchingCommandHandler : IRequestHandler<EntryMatchingCommand, Response>
++{
++    private readonly Matchmaker _mm;
++    private readonly OnlineMatchingConfigurations _cfg;
++
++    public EntryMatchingCommandHandler(Matchmaker mm, IOptions<CardServerConfig> options)
++    {
++        _mm = mm;
++        _cfg = options.Value.OnlineMatching;
++    }
++
++    public Task<Response> Handle(EntryMatchingCommand request, CancellationToken cancellationToken)
++    {
++        var req = request.Request;
++        var e = req.entry_matching;
++        var response = new Response { Type = req.Type, RequestId = req.RequestId ?? "" };
++        if (e?.Myclient == null)
++        {
++            response.Code = ErrorCode.ErrRequest;
++            return Task.FromResult(response);
++        }
++        response.Code = _mm.Entry(e, MmsClock.Now);
++        // The game only reads poling_interval (seconds); apply_id is proto2-required so echo it.
++        response.entry_matching = new Response.EntryMatching
++        {
++            PolingInterval = Math.Max(1u, _cfg.PollingIntervalSeconds),
++            ApplyId = e.ApplyId
++        };
++        return Task.FromResult(response);
++    }
++}
++
++public class CheckMatchingCommandHandler : IRequestHandler<CheckMatchingCommand, Response>
++{
++    private readonly Matchmaker _mm;
++
++    public CheckMatchingCommandHandler(Matchmaker mm) => _mm = mm;
++
++    public Task<Response> Handle(CheckMatchingCommand request, CancellationToken cancellationToken)
++    {
++        var req = request.Request;
++        var (code, room, applyId) = _mm.Check(req.check_matching?.NodeId ?? 0, MmsClock.Now);
++        var body = new Response.CheckMatching();
++        if (room != null)
++        {
++            // room_id + ALL clients incl. the requester and CPU stand-ins; group_id = team (0/1)
++            body.RoomId = room.RoomId;
++            body.ApplyId = applyId;
++            body.Clients.AddRange(room.Clients.Select(c => new Response.CheckMatching.MatchedClient
++            {
++                GroupId = c.GroupId,
++                Client = c.Client
++            }));
++        }
++        // code 0 + empty client list = "keep polling"
++        return Task.FromResult(new Response
++        {
++            Type = req.Type,
++            RequestId = req.RequestId ?? "",
++            Code = code,
++            check_matching = body
++        });
++    }
++}
++
++public class CancelMatchingCommandHandler : IRequestHandler<CancelMatchingCommand, Response>
++{
++    private readonly Matchmaker _mm;
++
++    public CancelMatchingCommandHandler(Matchmaker mm) => _mm = mm;
++
++    public Task<Response> Handle(CancelMatchingCommand request, CancellationToken cancellationToken)
++    {
++        var req = request.Request;
++        _mm.Cancel(req.cancel_matching?.NodeId ?? 0);   // the game ignores this reply
++        return Task.FromResult(new Response
++        {
++            Type = req.Type,
++            RequestId = req.RequestId ?? "",
++            Code = ErrorCode.Success,
++            cancel_matching = new Response.CancelMatching()
++        });
++    }
++}
+diff --git a/Server-Infinite/Handlers/Match/MatchingSettingCommandHandler.cs b/Server-Infinite/Handlers/Match/MatchingSettingCommandHandler.cs
+index f7dce78..a9abd37 100644
+--- a/Server-Infinite/Handlers/Match/MatchingSettingCommandHandler.cs
++++ b/Server-Infinite/Handlers/Match/MatchingSettingCommandHandler.cs
+@@ -13,7 +13,8 @@ public class MatchingSettingCommandHandler : IRequestHandler<MatchingSettingComm
+         {
+             Type = request.Request.Type,
+             RequestId = request.Request.RequestId,
+-            Code = ErrorCode.Success
++            Code = ErrorCode.Success,
++            matching_setting = new Response.MatchingSetting() // exvs2-lobbies: always include the submessage
+         };
+ 
+         return Task.FromResult(response);
+diff --git a/Server-Infinite/Matchmaking/Matchmaker.cs b/Server-Infinite/Matchmaking/Matchmaker.cs
+new file mode 100644
+index 0000000..a889cc2
+--- /dev/null
++++ b/Server-Infinite/Matchmaking/Matchmaker.cs
+@@ -0,0 +1,349 @@
++using nue.protocol.mms;
++
++namespace ServerInfinite.Matchmaking;
++
++/// <summary>
++/// [exvs2-lobbies / EXPERIMENTAL, tested only with fake cabinets, never with the real game]
++/// In-memory 2v2 matchmaker for nue.protocol.mms. C# port of server-sketch/python/mms_server.py.
++///
++/// * One EntryMatching = one <see cref="Unit"/>: a solo sortie (no groups, 1 slot, shuffle candidate) or a
++///   team sortie (partner cabinet "Y" or CPU stand-in "N" in groups[0], 2 slots, never split).
++/// * Buckets: (mucha_game_id, version, world_id, attr1 [, attr2 for "hard"/ranked worlds]).
++/// * Rooms are 2 sides x 2 slots: 4 solos -> random shuffle (ranked: closest levels / even split),
++///   team + 2 solos, team + team. After FillAfter seconds a short-handed room (>= 2 humans) may form.
++/// * Ranked (Class Match G) = worlds 13 (solo) / 14 (team); attr2 = class (hard key), attr4 = level,
++///   level band widens with waiting time.
++/// * group_id (team) is decided here; the cabinet only derives "same team as the first listed client".
++/// </summary>
++public sealed class Matchmaker
++{
++    public const string NpcSerial = "PCB00000NPC";
++    public const int TeamSlots = 2;
++    private const int PoolMax = 12;
++    private const double StaleAfter = 20;      // s without CheckMatching (on top of matching_timeout)
++    private const double MatchedKeep = 60;     // s to keep a finished room for late polls
++    private const uint AGroup = 1, AExtra = 2, ALevel = 4;
++
++    // (seconds waited, max |level diff|)
++    private static readonly (double Waited, int MaxLevelDiff)[] RankedBands = { (0, 0), (15, 1), (35, 2), (60, 99) };
++
++    private enum Policy { None, Hard, Soft, Class }
++
++    // world_id -> (name, attr2 policy); source: analysis/casual-shuffle-matching.md + ranked-matching.md
++    private static readonly Dictionary<uint, (string Name, Policy Policy)> Worlds = new()
++    {
++        [5] = ("legacy-mode0", Policy.None),
++        [13] = ("class-solo", Policy.Class), [14] = ("class-team", Policy.Class),
++        [15] = ("instore-solo", Policy.Hard), [16] = ("instore-team", Policy.Hard),
++        [17] = ("shop-setting", Policy.Hard),
++        [18] = ("free-solo", Policy.Soft), [19] = ("free-team", Policy.Soft), [20] = ("free-solo-b", Policy.Soft),
++        [25] = ("free-mixed", Policy.Soft), [23] = ("mix-match", Policy.Soft),
++        [21] = ("mode1", Policy.None), [22] = ("mode2", Policy.None),
++        [6] = ("tag-solo", Policy.Hard), [7] = ("tag-team", Policy.Hard), [24] = ("tag-mixed", Policy.Hard),
++        [26] = ("tag-solo-def", Policy.Hard), [27] = ("tag-team-def", Policy.Hard), [32] = ("tag-mixed-def", Policy.Hard),
++        [33] = ("tag7", Policy.Hard), [8] = ("mode8", Policy.Hard), [9] = ("mode9", Policy.Hard),
++    };
++
++    public sealed record RoomClient(uint GroupId, Client Client);
++
++    public sealed class Room
++    {
++        public uint RoomId { get; init; }
++        public IReadOnlyList<RoomClient> Clients { get; init; } = Array.Empty<RoomClient>();
++        public double At { get; init; }
++        public uint World { get; init; }
++        public int Humans { get; init; }
++    }
++
++    public sealed class Unit
++    {
++        public uint ApplyId;
++        public List<Client> Clients = new();
++        public List<Player> Players = new();
++        public int Slots => Clients.Count;
++        public bool IsTeam => Slots > 1;
++        public uint World;
++        public string WorldName = "";
++        public bool Ranked;
++        public string Key = "";
++        public long? Soft;
++        public long Level;
++        public uint SeqNum, CreateRoom;
++        public HashSet<uint> BlAm = new();
++        public HashSet<string> BlLoc = new();
++        public double Timeout, Created, LastSeen;
++        public Room? Room;
++
++        public static Unit From(Request.EntryMatching e, double now)
++        {
++            var u = new Unit
++            {
++                ApplyId = e.ApplyId, Timeout = e.MatchingTimeout == 0 ? 150 : e.MatchingTimeout,
++                Created = now, LastSeen = now, SeqNum = e.SeqNum, CreateRoom = e.CreateRoomFlag,
++            };
++            u.Clients.Add(e.Myclient);
++            u.Players.Add(e.Myplayer ?? new Player());
++            foreach (var g in e.Groups.Take(TeamSlots - 1))   // never more than one partner per side
++            {
++                if (g.Client == null) continue;
++                u.Clients.Add(g.Client);
++                u.Players.Add(g.Player ?? new Player());
++            }
++            var attrs = new Dictionary<uint, long>();
++            foreach (var p in e.Myplayer?.Parameters ?? new List<Player.Parameter>())
++                attrs[p.AttributeId] = p.parameter;
++            u.World = e.World?.WorldId ?? 0;
++            var (name, policy) = Worlds.TryGetValue(u.World, out var w) ? w : ($"world{u.World}", Policy.Hard);
++            u.WorldName = name;
++            u.Ranked = policy == Policy.Class;
++            u.Key = $"{e.World?.MuchaGameId}|{e.World?.Version}|{u.World}|{attrs.GetValueOrDefault(AGroup)}";
++            if (policy is Policy.Class or Policy.Hard) u.Key += $"|{attrs.GetValueOrDefault(AExtra)}";
++            u.Soft = policy == Policy.Soft ? attrs.GetValueOrDefault(AExtra) : null;
++            u.Level = attrs.GetValueOrDefault(ALevel);
++            if (e.BlBanapassportAmIds != null) u.BlAm.UnionWith(e.BlBanapassportAmIds);
++            u.BlLoc.UnionWith(e.BlLocIds.Where(x => x != null));
++            return u;
++        }
++
++        /// <summary>property[0] == "Y" marks a real cabinet; the CPU stand-in is "N" / PCB00000NPC.</summary>
++        public static bool IsHuman(Client c) =>
++            c.Properties.Count > 0 ? c.Properties[0].PropertyValue == "Y" : c.PcbSerial != NpcSerial;
++
++        public IEnumerable<Client> Humans => Clients.Where(IsHuman);
++        public HashSet<uint> NodeIds => Humans.Select(c => c.NodeId).ToHashSet();
++        public HashSet<uint> AmIds => Clients.Zip(Players)
++            .Where(x => IsHuman(x.First) && x.Second.BanapassportAmId != 0)
++            .Select(x => x.Second.BanapassportAmId).ToHashSet();
++        public HashSet<string> Locs => Humans.Select(c => c.LocId ?? "").ToHashSet();
++    }
++
++    private readonly object _gate = new();
++    private readonly Dictionary<uint, Unit> _byNode = new();
++    private readonly List<Unit> _queue = new();
++    private readonly Random _rng;
++    private uint _nextRoom = 1;
++
++    public double FillAfter { get; set; }
++    public bool AllowPartial { get; set; }
++    public double SoftWait { get; set; }
++    public Action<string>? Log { get; set; }
++
++    public Matchmaker(double fillAfter = 30, bool allowPartial = true, double softWait = 15, int seed = 0)
++    {
++        FillAfter = fillAfter;
++        AllowPartial = allowPartial;
++        SoftWait = softWait;
++        _rng = seed == 0 ? new Random() : new Random(seed);
++    }
++
++    public int QueueLength { get { lock (_gate) return _queue.Count; } }
++
++    public ErrorCode Entry(Request.EntryMatching e, double now)
++    {
++        var t = Unit.From(e, now);
++        lock (_gate)
++        {
++            Sweep(now);
++            foreach (var n in t.NodeIds)
++            {
++                if (!_byNode.TryGetValue(n, out var old) || old.Room != null) continue;
++                if (old.NodeIds.SetEquals(t.NodeIds))
++                {
++                    // the partner cabinet of a fixed pair sent its own entry: merge into the existing unit
++                    old.LastSeen = now;
++                    return ErrorCode.Success;
++                }
++                Drop(old);   // re-entry replaces a stale wait
++            }
++            foreach (var n in t.NodeIds) _byNode[n] = t;
++            _queue.Add(t);
++            TryMatch(now);
++            Log?.Invoke($"entry {t.WorldName} nodes=[{string.Join(",", t.NodeIds)}] slots={t.Slots} key={t.Key} level={t.Level} queue={_queue.Count}");
++        }
++        return ErrorCode.Success;
++    }
++
++    public (ErrorCode Code, Room? Room, uint ApplyId) Check(uint nodeId, double now)
++    {
++        lock (_gate)
++        {
++            Sweep(now);
++            if (!_byNode.TryGetValue(nodeId, out var t)) return (ErrorCode.ErrMatchNoentry, null, 0);
++            t.LastSeen = now;
++            if (t.Room == null) TryMatch(now);           // bands widen / fill timer runs with time
++            if (t.Room != null) return (ErrorCode.Success, t.Room, t.ApplyId);
++            if (now - t.Created > t.Timeout)
++            {
++                Drop(t);
++                return (ErrorCode.MatchCanceled, null, 0);
++            }
++            return (ErrorCode.Success, null, 0);         // empty = keep polling
++        }
++    }
++
++    public void Cancel(uint nodeId)
++    {
++        lock (_gate)
++            if (_byNode.TryGetValue(nodeId, out var t) && t.Room == null) Drop(t);
++    }
++
++    // ---- internals (lock held) ----
++
++    private bool Compatible(Unit a, Unit b, double now)
++    {
++        if (a.Key != b.Key) return false;
++        if (a.NodeIds.Overlaps(b.NodeIds)) return false;                 // same cabinet(s)
++        if (a.AmIds.Overlaps(b.AmIds)) return false;                     // same card twice
++        if (a.BlAm.Overlaps(b.AmIds) || b.BlAm.Overlaps(a.AmIds)) return false;
++        if (a.BlLoc.Overlaps(b.Locs) || b.BlLoc.Overlaps(a.Locs)) return false;
++        var waited = now - Math.Min(a.Created, b.Created);              // the longer waiter widens the search
++        if (a.Soft != null && b.Soft != null && a.Soft != b.Soft && waited < SoftWait) return false;
++        if (a.Ranked)
++        {
++            var maxDiff = 0;
++            foreach (var (w, d) in RankedBands) if (waited >= w) maxDiff = d;
++            if (Math.Abs(a.Level - b.Level) > maxDiff) return false;
++        }
++        return true;
++    }
++
++    private static IEnumerable<(List<Unit> S0, List<Unit> S1)> SideSplits(List<Unit> units)
++    {
++        var n = units.Count;
++        for (var mask = 0; mask < 1 << (n - 1); mask++)
++        {
++            var s0 = new List<Unit> { units[0] };
++            var s1 = new List<Unit>();
++            for (var i = 1; i < n; i++) (((mask >> (i - 1)) & 1) == 0 ? s0 : s1).Add(units[i]);
++            if (s1.Count == 0) continue;
++            if (s0.Sum(u => u.Slots) > TeamSlots || s1.Sum(u => u.Slots) > TeamSlots) continue;
++            yield return (s0, s1);
++        }
++    }
++
++    private static IEnumerable<List<Unit>> Combinations(List<Unit> pool, int r, int start = 0)
++    {
++        if (r == 0) { yield return new List<Unit>(); yield break; }
++        for (var i = start; i <= pool.Count - r; i++)
++            foreach (var rest in Combinations(pool, r - 1, i + 1))
++            {
++                rest.Insert(0, pool[i]);
++                yield return rest;
++            }
++    }
++
++    private (double, double, double) Score((List<Unit> S0, List<Unit> S1) sides, Dictionary<Unit, int> idx)
++    {
++        var units = sides.S0.Concat(sides.S1).ToList();
++        double order = units.Sum(u => idx[u]);
++        if (units[0].Ranked)
++        {
++            // most even split by level, then smallest level spread, then FIFO
++            double Avg(List<Unit> s) => s.Sum(u => (double)u.Level * u.Slots) / Math.Max(1, s.Sum(u => u.Slots));
++            var spread = units.Max(u => u.Level) - units.Min(u => u.Level);
++            return (spread * 1000 + Math.Abs(Avg(sides.S0) - Avg(sides.S1)), order, 0);
++        }
++        var softs = units.Where(u => u.Soft != null).Select(u => u.Soft).Distinct().Count();
++        return (Math.Max(0, softs - 1) * 100 + order, _rng.NextDouble(), 0);   // random split = shuffle
++    }
++
++    private (List<Unit>, List<Unit>)? BestRoom(Unit anchor, List<Unit> pool, Dictionary<Unit, int> idx, double now, bool shortHanded)
++    {
++        (double, (double, double, double))? bestScore = null;
++        (List<Unit>, List<Unit>)? best = null;
++        for (var r = 1; r <= Math.Min(3, pool.Count); r++)
++        {
++            foreach (var combo in Combinations(pool, r))
++            {
++                var units = new List<Unit> { anchor };
++                units.AddRange(combo);
++                var slots = units.Sum(u => u.Slots);
++                if (shortHanded)
++                {
++                    if (slots >= 2 * TeamSlots || units.Sum(u => u.Humans.Count()) < 2) continue;
++                }
++                else if (slots != 2 * TeamSlots) continue;
++
++                var ok = true;
++                for (var i = 0; i < units.Count && ok; i++)
++                    for (var j = i + 1; j < units.Count && ok; j++)
++                        ok = Compatible(units[i], units[j], now);
++                if (!ok) continue;
++
++                foreach (var sides in SideSplits(units))
++                {
++                    var s = ((double)(shortHanded ? -slots : 0), Score(sides, idx));
++                    if (bestScore == null || s.CompareTo(bestScore.Value) < 0)
++                    {
++                        bestScore = s;
++                        best = sides;
++                    }
++                }
++            }
++        }
++        return best;
++    }
++
++    private void TryMatch(double now)
++    {
++        bool made;
++        do
++        {
++            made = false;
++            foreach (var bucket in _queue.GroupBy(u => u.Key).Select(g => g.ToList()))
++            {
++                var idx = bucket.Select((u, i) => (u, i)).ToDictionary(x => x.u, x => x.i);
++                for (var i = 0; i < bucket.Count && !made; i++)
++                {
++                    var a = bucket[i];
++                    var pool = bucket.Skip(i + 1).Where(u => Compatible(a, u, now)).Take(PoolMax).ToList();
++                    var sides = BestRoom(a, pool, idx, now, false);
++                    if (sides == null && AllowPartial && now - a.Created >= FillAfter)
++                        sides = BestRoom(a, pool, idx, now, true);
++                    if (sides != null)
++                    {
++                        MakeRoom(sides.Value, now);
++                        made = true;
++                    }
++                }
++                if (made) break;
++            }
++        } while (made);
++    }
++
++    private void MakeRoom((List<Unit> S0, List<Unit> S1) sides, double now)
++    {
++        var clients = new List<RoomClient>();
++        foreach (var u in sides.S0) clients.AddRange(u.Clients.Select(c => new RoomClient(0, c)));
++        foreach (var u in sides.S1) clients.AddRange(u.Clients.Select(c => new RoomClient(1, c)));
++        var all = sides.S0.Concat(sides.S1).ToList();
++        var room = new Room
++        {
++            RoomId = _nextRoom++, Clients = clients, At = now, World = all[0].World,
++            Humans = all.Sum(u => u.Humans.Count()),
++        };
++        foreach (var u in all)
++        {
++            _queue.Remove(u);
++            u.Room = room;
++        }
++        string Desc(List<Unit> s) => string.Join("+", s.Select(u => $"{(u.IsTeam ? "T" : "S")}[{string.Join(",", u.NodeIds)}]"));
++        Log?.Invoke($"MATCH room={room.RoomId} {all[0].WorldName} {Desc(sides.S0)} vs {Desc(sides.S1)} (humans={room.Humans}/4)");
++    }
++
++    private void Drop(Unit t)
++    {
++        _queue.Remove(t);
++        foreach (var k in _byNode.Where(kv => ReferenceEquals(kv.Value, t)).Select(kv => kv.Key).ToList())
++            _byNode.Remove(k);
++    }
++
++    private void Sweep(double now)
++    {
++        foreach (var t in _byNode.Values.Distinct().ToList())
++        {
++            if (t.Room == null && now - t.LastSeen > StaleAfter + t.Timeout) Drop(t);
++            else if (t.Room != null && now - t.Room.At > MatchedKeep) Drop(t);
++        }
++    }
++}
+diff --git a/Server-Infinite/Matchmaking/NodeIdAllocator.cs b/Server-Infinite/Matchmaking/NodeIdAllocator.cs
+new file mode 100644
+index 0000000..7ed79cf
+--- /dev/null
++++ b/Server-Infinite/Matchmaking/NodeIdAllocator.cs
+@@ -0,0 +1,56 @@
++using System.Text.Json;
++
++namespace ServerInfinite.Matchmaking;
++
++/// <summary>
++/// [exvs2-lobbies / EXPERIMENTAL] Monotonic, persisted, globally unique MMS node ids.
++/// The cabinet asks for issue_count = 2 and rejects replies with fewer ids; it finds itself in the
++/// CheckMatching client list by node_id equality, so ids must never repeat (also across restarts).
++/// </summary>
++public interface INodeIdAllocator
++{
++    uint[] Take(int count);
++}
++
++public sealed class FileNodeIdAllocator : INodeIdAllocator
++{
++    private readonly object _gate = new();
++    private readonly string? _path;
++    private uint _next;
++
++    public FileNodeIdAllocator(string? path, uint start = 1000)
++    {
++        _path = string.IsNullOrWhiteSpace(path) ? null : path;
++        _next = start;
++        if (_path != null && File.Exists(_path))
++        {
++            try
++            {
++                using var doc = JsonDocument.Parse(File.ReadAllText(_path));
++                if (doc.RootElement.TryGetProperty("next_node_id", out var v))
++                    _next = Math.Max(start, v.GetUInt32());
++            }
++            catch (Exception)
++            {
++                // corrupt state file: keep going from `start`; uniqueness within this run still holds
++            }
++        }
++    }
++
++    public uint[] Take(int count)
++    {
++        count = Math.Clamp(count, 1, 16);
++        lock (_gate)
++        {
++            var ids = new uint[count];
++            for (var i = 0; i < count; i++) ids[i] = _next++;
++            if (_path != null)
++            {
++                var tmp = _path + ".tmp";
++                File.WriteAllText(tmp, JsonSerializer.Serialize(new Dictionary<string, uint> { ["next_node_id"] = _next }));
++                File.Move(tmp, _path, overwrite: true);
++            }
++            return ids;
++        }
++    }
++}
+diff --git a/Server-Infinite/Migrations/20261113000000_AddClassMatchGrade.cs b/Server-Infinite/Migrations/20261113000000_AddClassMatchGrade.cs
+new file mode 100644
+index 0000000..57c75b9
+--- /dev/null
++++ b/Server-Infinite/Migrations/20261113000000_AddClassMatchGrade.cs
+@@ -0,0 +1,37 @@
++using Microsoft.EntityFrameworkCore.Infrastructure;
++using Microsoft.EntityFrameworkCore.Migrations;
++using ServerInfinite.Persistence;
++
++#nullable disable
++
++namespace ServerInfinite.Migrations;
++
++// exvs2-lobbies: store the Class Match grade reported in SaveVsmOnResult so PreLoadCard can return it.
++// Hand-written (no Designer file); the model snapshot was updated to match.
++[DbContext(typeof(ServerDbContext))]
++[Migration("20261113000000_AddClassMatchGrade")]
++public partial class AddClassMatchGrade : Migration
++{
++    protected override void Up(MigrationBuilder migrationBuilder)
++    {
++        migrationBuilder.AddColumn<uint>(
++            name: "Grade",
++            table: "exvs2ob_battle_solo_class_record",
++            type: "INTEGER",
++            nullable: false,
++            defaultValue: 0u);
++
++        migrationBuilder.AddColumn<uint>(
++            name: "Grade",
++            table: "exvs2ob_battle_team_class_record",
++            type: "INTEGER",
++            nullable: false,
++            defaultValue: 0u);
++    }
++
++    protected override void Down(MigrationBuilder migrationBuilder)
++    {
++        migrationBuilder.DropColumn(name: "Grade", table: "exvs2ob_battle_solo_class_record");
++        migrationBuilder.DropColumn(name: "Grade", table: "exvs2ob_battle_team_class_record");
++    }
++}
+diff --git a/Server-Infinite/Migrations/ServerDbContextModelSnapshot.cs b/Server-Infinite/Migrations/ServerDbContextModelSnapshot.cs
+index ff4b13d..5f37d66 100644
+--- a/Server-Infinite/Migrations/ServerDbContextModelSnapshot.cs
++++ b/Server-Infinite/Migrations/ServerDbContextModelSnapshot.cs
+@@ -577,6 +577,9 @@ namespace ServerInfinite.Migrations
+                     b.Property<DateTime>("CreateTime")
+                         .HasColumnType("TEXT");
+ 
++                    b.Property<uint>("Grade")
++                        .HasColumnType("INTEGER");
++
+                     b.Property<uint>("MaxPosition")
+                         .HasColumnType("INTEGER");
+ 
+@@ -623,6 +626,9 @@ namespace ServerInfinite.Migrations
+                     b.Property<DateTime>("CreateTime")
+                         .HasColumnType("TEXT");
+ 
++                    b.Property<uint>("Grade")
++                        .HasColumnType("INTEGER");
++
+                     b.Property<uint>("MaxPosition")
+                         .HasColumnType("INTEGER");
+ 
+diff --git a/Server-Infinite/Models/Cards/Battle/BaseClassMatchRecord.cs b/Server-Infinite/Models/Cards/Battle/BaseClassMatchRecord.cs
+index 208ec20..ae466cf 100644
+--- a/Server-Infinite/Models/Cards/Battle/BaseClassMatchRecord.cs
++++ b/Server-Infinite/Models/Cards/Battle/BaseClassMatchRecord.cs
+@@ -17,6 +17,11 @@ public class BaseClassMatchRecord : BaseEntity
+ 
+     [Required] 
+     public float Rate { get; set; } = 1500.0f;
++
++    // exvs2-lobbies: grade inside the class (10 -> 1), as reported by the cabinet in
++    // SaveVsmOnResult.class_match_result.grade_id. 0 = never reported (upstream behaviour: grade_* sent as 0).
++    [Required]
++    public uint Grade { get; set; } = 0;
+     
+     [Required] 
+     public uint MaxPosition { get; set; } = 0;
+diff --git a/Server-Infinite/Models/Config/CardServerConfig.cs b/Server-Infinite/Models/Config/CardServerConfig.cs
+index bf150d5..969bd29 100644
+--- a/Server-Infinite/Models/Config/CardServerConfig.cs
++++ b/Server-Infinite/Models/Config/CardServerConfig.cs
+@@ -11,6 +11,9 @@ public class CardServerConfig
+ 
+     public GameConfigurations GameConfigurations { get; set; } = new();
+ 
++    // exvs2-lobbies: online matchmaking (experimental)
++    public OnlineMatchingConfigurations OnlineMatching { get; set; } = new();
++
+     public override string ToString()
+     {
+         var options = new JsonSerializerOptions
+diff --git a/Server-Infinite/Models/Config/OnlineMatchingConfigurations.cs b/Server-Infinite/Models/Config/OnlineMatchingConfigurations.cs
+new file mode 100644
+index 0000000..7e9c715
+--- /dev/null
++++ b/Server-Infinite/Models/Config/OnlineMatchingConfigurations.cs
+@@ -0,0 +1,54 @@
++namespace ServerInfinite.Models.Config;
++
++/// <summary>
++/// [exvs2-lobbies / EXPERIMENTAL, untested with the real game]
++/// Online (WAN) matchmaking settings. The cabinet only starts online matching (STUN + IssueNodeId)
++/// when RegisterPcb returns an SRV_STUN entry, and it uses the SRV_MATCH "uri" verbatim as the full
++/// MMS URL (the port field is ignored). The cabinet itself must use battleMode 0 in testmode_pcb.json.
++/// </summary>
++public class OnlineMatchingConfigurations
++{
++    /// <summary>When false, RegisterPcb behaves like upstream (SRV_MATCH only, no STUN).</summary>
++    public bool Enabled { get; set; } = false;
++
++    /// <summary>
++    /// Full MMS URL sent to the cabinet, e.g. "http://192.168.1.105:28080/match".
++    /// Empty = "http://{host the cabinet used to reach this server}/match" (the built-in MMS).
++    /// Point it at server-sketch/python/mms_server.py (e.g. "http://host:5000/mms") to use the external one.
++    /// </summary>
++    public string MatchUrl { get; set; } = "";
++
++    /// <summary>STUN host (an IP literal is safest). Empty = the host part of the request's Host header.</summary>
++    public string StunHost { get; set; } = "";
++    public uint StunPort { get; set; } = 3478;
++    /// <summary>Only used if the STUN server answers 401/438 (long-term credentials).</summary>
++    public string StunUser { get; set; } = "";
++    [System.Text.Json.Serialization.JsonIgnore] // keep it out of the startup config log
++    public string StunPass { get; set; } = "";
++
++    /// <summary>Seconds between CheckMatching polls (EntryMatching.poling_interval).</summary>
++    public uint PollingIntervalSeconds { get; set; } = 3;
++    /// <summary>Seconds the oldest waiter waits for a full 2v2 before a short-handed (1v1 / 2v1) room may form.</summary>
++    public double FillAfterSeconds { get; set; } = 30;
++    /// <summary>Allow short-handed rooms at all (false = only full 4-slot rooms).</summary>
++    public bool AllowPartialRooms { get; set; } = true;
++    /// <summary>Seconds during which a "soft" mode attribute (win-rate bucket, veteran flag) must match.</summary>
++    public double SoftAttributeWaitSeconds { get; set; } = 15;
++    /// <summary>File that persists the next node id so ids never repeat across restarts.</summary>
++    public string NodeIdStateFile { get; set; } = "mms_nodeids.json";
++    /// <summary>First node id handed out on a fresh install.</summary>
++    public uint FirstNodeId { get; set; } = 1000;
++    /// <summary>Random seed for shuffles (0 = random). Only useful for tests.</summary>
++    public int ShuffleSeed { get; set; } = 0;
++
++    /// <summary>
++    /// LoadClassMatch schedule rows. IB appears to compare schedule start/end against the local HOUR
++    /// (static analysis, ranked-matching.md 2.3) while upstream sends unix times. "Both" sends an hour row
++    /// (0..27) and a unix row, both pointing at the same pattern, so either interpretation finds a pattern.
++    /// Values: "Both" (default), "Hours", "UnixTime" (upstream behaviour).
++    /// </summary>
++    public string ClassMatchScheduleMode { get; set; } = "Both";
++
++    /// <summary>Store rate / class / grade reported in SaveVsmOnResult.class_match_result (ranked).</summary>
++    public bool PersistClassMatchResult { get; set; } = true;
++}
+diff --git a/Server-Infinite/Program.cs b/Server-Infinite/Program.cs
+index 1745d32..600602c 100644
+--- a/Server-Infinite/Program.cs
++++ b/Server-Infinite/Program.cs
+@@ -28,7 +28,9 @@ var failed = false;
+ 
+ try
+ {
++#if !LINUX_HOST
+     DisclaimerMessageBox.Start();
++#endif
+     SQLitePCL.Batteries_V2.Init();
+     
+     var builder = WebApplication.CreateBuilder(args);
+@@ -67,6 +69,23 @@ try
+     builder.Services.AddSingleton<ServerInfinite.Processor.Tracker.ITrackerCatalog>(sp =>
+         new ServerInfinite.Processor.Tracker.TrackerCatalog(sp.GetRequiredService<IWebHostEnvironment>().WebRootFileProvider));
+     builder.Services.AddMemoryCache();
++
++    // exvs2-lobbies: in-process online matchmaking (EXPERIMENTAL, see OnlineMatchingConfigurations)
++    builder.Services.AddSingleton<ServerInfinite.Matchmaking.INodeIdAllocator>(sp =>
++    {
++        var mm = sp.GetRequiredService<IOptions<CardServerConfig>>().Value.OnlineMatching;
++        return new ServerInfinite.Matchmaking.FileNodeIdAllocator(mm.NodeIdStateFile, mm.FirstNodeId);
++    });
++    builder.Services.AddSingleton(sp =>
++    {
++        var mm = sp.GetRequiredService<IOptions<CardServerConfig>>().Value.OnlineMatching;
++        var logger = sp.GetRequiredService<ILoggerFactory>().CreateLogger("Matchmaker");
++        return new ServerInfinite.Matchmaking.Matchmaker(mm.FillAfterSeconds, mm.AllowPartialRooms,
++            mm.SoftAttributeWaitSeconds, mm.ShuffleSeed)
++        {
++            Log = message => logger.LogInformation("{Message}", message)
++        };
++    });
+     builder.Services.AddHttpContextAccessor();
+     
+     var app = builder.Build();
+diff --git a/Server-Infinite/Server-Infinite.csproj b/Server-Infinite/Server-Infinite.csproj
+index 519b7c9..2206c64 100644
+--- a/Server-Infinite/Server-Infinite.csproj
++++ b/Server-Infinite/Server-Infinite.csproj
+@@ -10,6 +10,17 @@
+     <UseWindowsForms>true</UseWindowsForms>
+     <CetCompat>false</CetCompat>
+   </PropertyGroup>
++  <!-- exvs2-lobbies: optional Linux build (no WinForms disclaimer dialog): dotnet build -p:LinuxHost=true -->
++  <PropertyGroup Condition="'$(LinuxHost)' == 'true'">
++    <TargetFramework>net9.0</TargetFramework>
++    <UseWindowsForms>false</UseWindowsForms>
++    <SelfContained>false</SelfContained>
++    <PublishSingleFile>false</PublishSingleFile>
++    <DefineConstants>$(DefineConstants);LINUX_HOST</DefineConstants>
++  </PropertyGroup>
++  <ItemGroup Condition="'$(LinuxHost)' == 'true'">
++    <Compile Remove="Common\Disclaimer\**" />
++  </ItemGroup>
+   <ItemGroup>
+     <Compile Remove="Extensions\**" />
+     <Compile Remove="Services\**" />
+diff --git a/Tests/Matchmaking.Tests/MatchmakerTests.cs b/Tests/Matchmaking.Tests/MatchmakerTests.cs
+new file mode 100644
+index 0000000..957c62e
+--- /dev/null
++++ b/Tests/Matchmaking.Tests/MatchmakerTests.cs
+@@ -0,0 +1,170 @@
++using nue.protocol.mms;
++using ServerInfinite.Matchmaking;
++using Xunit;
++
++namespace Matchmaking.Tests;
++
++// EXPERIMENTAL: message shapes follow static analysis of vsac29, not a live capture.
++public class MatchmakerTests
++{
++    private uint _node = 100;
++
++    private static Client Cl(uint node, bool human = true, string loc = "LOC1")
++    {
++        var c = new Client
++        {
++            NodeId = node, PcbSerial = human ? $"P{node}" : Matchmaker.NpcSerial, LocId = loc, PrefCode = 13,
++            NatMappingType = NatMappingType.NmEndpointIndependent, NatFilteringType = NatFilteringType.NfEndpointIndependent
++        };
++        c.Properties.Add(new Client.Property { PropertyId = 0, PropertyValue = human ? "Y" : "N" });
++        return c;
++    }
++
++    private Request.EntryMatching Entry(uint world, string sortie = "S", long attr2 = 0, long level = 0, uint timeout = 150)
++    {
++        var me = ++_node;
++        var loc = $"L{me}";
++        var e = new Request.EntryMatching
++        {
++            ApplyId = 1, Myclient = Cl(me, true, loc), MatchingTimeout = timeout,
++            Myplayer = new Player { BanapassportAmId = me },
++            World = new World { MuchaGameId = "GIB1", Version = 1, WorldId = world }
++        };
++        e.Myplayer.Parameters.Add(new Player.Parameter { AttributeId = 1, parameter = 0 });
++        e.Myplayer.Parameters.Add(new Player.Parameter { AttributeId = 2, parameter = attr2 });
++        e.Myplayer.Parameters.Add(new Player.Parameter { AttributeId = 4, parameter = level });
++        if (sortie == "T")
++            e.Groups.Add(new Request.EntryMatching.Group { Client = Cl(++_node, true, loc), Player = new Player { BanapassportAmId = 9000 + me } });
++        if (sortie == "TN")
++            e.Groups.Add(new Request.EntryMatching.Group { Client = Cl(++_node, false, loc), Player = new Player() });
++        return e;
++    }
++
++    private static Matchmaker New() => new(fillAfter: 30, allowPartial: true, softWait: 15, seed: 1);
++
++    [Fact]
++    public void FourSolosAreShuffledIntoTwoPairs()
++    {
++        var mm = New();
++        var es = Enumerable.Range(0, 4).Select(_ => Entry(23)).ToList();
++        es.ForEach(e => Assert.Equal(ErrorCode.Success, mm.Entry(e, 0)));
++        var (code, room, _) = mm.Check(es[0].Myclient.NodeId, 1);
++        Assert.Equal(ErrorCode.Success, code);
++        Assert.NotNull(room);
++        Assert.Equal(4, room!.Clients.Count);
++        Assert.Equal(2, room.Clients.Count(c => c.GroupId == 0));
++        foreach (var e in es) Assert.Same(room, mm.Check(e.Myclient.NodeId, 1).Room);
++    }
++
++    [Fact]
++    public void FixedPairIsNeverSplit()
++    {
++        var mm = New();
++        var team = Entry(18, "T");
++        mm.Entry(team, 0);
++        mm.Entry(Entry(18), 0);
++        mm.Entry(Entry(18), 0);
++        var room = mm.Check(team.Myclient.NodeId, 1).Room!;
++        var g = room.Clients.First(c => c.Client.NodeId == team.Myclient.NodeId).GroupId;
++        Assert.Equal(g, room.Clients.First(c => c.Client.NodeId == team.Groups[0].Client.NodeId).GroupId);
++        // the partner cabinet polls with its own node id and sees the same room
++        Assert.Same(room, mm.Check(team.Groups[0].Client.NodeId, 1).Room);
++    }
++
++    [Fact]
++    public void TwoTeamsWithCpuPartnersMatch()
++    {
++        var mm = New();
++        var a = Entry(5, "TN");
++        var b = Entry(5, "TN");
++        mm.Entry(a, 0);
++        mm.Entry(b, 0);
++        var room = mm.Check(a.Myclient.NodeId, 1).Room!;
++        Assert.Equal(4, room.Clients.Count);
++        Assert.Equal(2, room.Humans);
++    }
++
++    [Fact]
++    public void DifferentModesNeverMix()
++    {
++        var mm = New();
++        mm.Entry(Entry(18), 0); mm.Entry(Entry(18), 0);
++        var x = Entry(23); mm.Entry(x, 0); mm.Entry(Entry(23), 0);
++        Assert.Null(mm.Check(x.Myclient.NodeId, 1).Room);
++        Assert.Equal(4, mm.QueueLength);
++    }
++
++    [Fact]
++    public void RankedKeepsClassesApart()
++    {
++        var mm = New();
++        var c2 = Enumerable.Range(0, 2).Select(_ => Entry(13, "S", attr2: 2, level: 3)).ToList();
++        var c3 = Enumerable.Range(0, 2).Select(_ => Entry(13, "S", attr2: 3, level: 3)).ToList();
++        foreach (var e in c2.Concat(c3)) mm.Entry(e, 0);
++        Assert.Null(mm.Check(c2[0].Myclient.NodeId, 1).Room);
++        mm.Entry(Entry(13, "S", attr2: 2, level: 3), 1);
++        mm.Entry(Entry(13, "S", attr2: 2, level: 3), 1);
++        var room = mm.Check(c2[0].Myclient.NodeId, 2).Room!;
++        Assert.Equal(4, room.Clients.Count);
++        Assert.DoesNotContain(room.Clients, c => c3.Any(e => e.Myclient.NodeId == c.Client.NodeId));
++    }
++
++    [Fact]
++    public void RankedLevelBandWidensWithTime()
++    {
++        var mm = new Matchmaker(fillAfter: 1000, allowPartial: false, seed: 1);
++        var es = new[] { Entry(13, "S", 2, 1), Entry(13, "S", 2, 1), Entry(13, "S", 2, 3), Entry(13, "S", 2, 3) };
++        foreach (var e in es) mm.Entry(e, 0);
++        Assert.Null(mm.Check(es[0].Myclient.NodeId, 10).Room);   // |1-3| = 2 > band 0/1
++        Assert.NotNull(mm.Check(es[0].Myclient.NodeId, 36).Room); // after 35 s the band is 2
++    }
++
++    [Fact]
++    public void ShortHandedRoomOnlyAfterFillTimer()
++    {
++        var mm = New();
++        var a = Entry(23); var b = Entry(23);
++        mm.Entry(a, 0); mm.Entry(b, 0);
++        Assert.Null(mm.Check(a.Myclient.NodeId, 10).Room);
++        var room = mm.Check(a.Myclient.NodeId, 31).Room!;
++        Assert.Equal(2, room.Clients.Count);
++        Assert.NotEqual(room.Clients[0].GroupId, room.Clients[1].GroupId);  // 1v1
++    }
++
++    [Fact]
++    public void CancelAndTimeout()
++    {
++        var mm = New();
++        var a = Entry(23, timeout: 90);
++        mm.Entry(a, 0);
++        mm.Cancel(a.Myclient.NodeId);
++        Assert.Equal(ErrorCode.ErrMatchNoentry, mm.Check(a.Myclient.NodeId, 1).Code);
++        var b = Entry(23, timeout: 90);
++        mm.Entry(b, 0);
++        Assert.Equal(ErrorCode.MatchCanceled, mm.Check(b.Myclient.NodeId, 91).Code);
++    }
++
++    [Fact]
++    public void BlacklistedCardIsNotMatched()
++    {
++        var mm = new Matchmaker(fillAfter: 0, allowPartial: true, seed: 1);
++        var a = Entry(23); var b = Entry(23);
++        a.BlBanapassportAmIds = new[] { b.Myplayer.BanapassportAmId };
++        mm.Entry(a, 0); mm.Entry(b, 0);
++        Assert.Null(mm.Check(a.Myclient.NodeId, 100).Room);
++    }
++
++    [Fact]
++    public void NodeIdsAreUniqueAndPersisted()
++    {
++        var path = Path.Combine(Path.GetTempPath(), $"nodeids-{Guid.NewGuid():n}.json");
++        try
++        {
++            var first = new FileNodeIdAllocator(path, 1000).Take(2);
++            var second = new FileNodeIdAllocator(path, 1000).Take(2);
++            Assert.Equal(new uint[] { 1000, 1001 }, first);
++            Assert.Equal(new uint[] { 1002, 1003 }, second);
++        }
++        finally { File.Delete(path); }
++    }
++}
+diff --git a/Tests/Matchmaking.Tests/Matchmaking.Tests.csproj b/Tests/Matchmaking.Tests/Matchmaking.Tests.csproj
+new file mode 100644
+index 0000000..3b81d9a
+--- /dev/null
++++ b/Tests/Matchmaking.Tests/Matchmaking.Tests.csproj
+@@ -0,0 +1,19 @@
++<Project Sdk="Microsoft.NET.Sdk">
++  <!-- exvs2-lobbies: fast, platform-independent tests for the in-process matchmaker (no web host, no DB). -->
++  <PropertyGroup>
++    <TargetFramework>net9.0</TargetFramework>
++    <Nullable>enable</Nullable>
++    <ImplicitUsings>enable</ImplicitUsings>
++    <IsPackable>false</IsPackable>
++  </PropertyGroup>
++  <ItemGroup>
++    <Compile Include="..\..\Server-Infinite\Matchmaking\*.cs" Link="Matchmaking\%(Filename)%(Extension)" />
++    <Compile Include="..\..\Server-Infinite\Proto\Match.cs" Link="Proto\Match.cs" />
++  </ItemGroup>
++  <ItemGroup>
++    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
++    <PackageReference Include="xunit" Version="2.9.2" />
++    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
++    <PackageReference Include="protobuf-net" Version="3.2.45" />
++  </ItemGroup>
++</Project>
+-- 
+2.47.3
+

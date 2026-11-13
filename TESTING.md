@@ -5,10 +5,10 @@ Everything here is **untested in the real game**. Tick items off as they're veri
 ## Setup (do first)
 - [ ] Back up `testmode_pcb.json`, then set `battleMode: 0` in the active entry with `_re/tools/svd1.py`; confirm the game switches to online (WAN) matching and no longer uses the LM
 - [ ] Confirm the game binds to the correct network adapter / IP (currently Radmin VPN)
-- [ ] Get a card server whose RegisterPcb returns the match server `uri` plus a SRV_STUN entry; confirm IssueNodeId hits our server
+- [ ] Get a card server whose RegisterPcb returns the match server `uri` plus a SRV_STUN entry; confirm IssueNodeId hits our server — build the patched EXVS2-IB-Server from [`server-sketch/ib-server`](server-sketch/ib-server/README.md) (box-tested with fake cabinets only)
 
 ## Basic matchmaking
-- [ ] EntryMatching + CheckMatching polling reaches `mms_server.py` (capture with tcpdump)
+- [ ] EntryMatching + CheckMatching polling reaches the matchmaker (built-in `/match` or `mms_server.py`; capture with tcpdump)
 - [ ] A matched room actually starts a battle; capture the cabinet-to-cabinet (hole-punch / P2P) packet format
 - [ ] Play modes 1–6 land in separate queues; `battleMode` values other than 0 still use the LM path
 

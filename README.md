@@ -24,6 +24,7 @@ included. You must already have a copy of the game; this repo is notes, analysis
 | Research | `analysis/` — WAN/MMS + STUN protocol notes, LAN 16-slot limit, server design | Findings from static analysis; not proven in a live match |
 | Python MMS sketch | `server-sketch/python/` — stdlib HTTP protobuf prototype + fake cabinets | Exercised against simulated cabinets only, **not** against the game |
 | C# handler sketch | `server-sketch/csharp/` — IB-Server-style handlers + RegisterPcb notes | **Uncompiled**, not wired into a running server |
+| Card server patch (step 3) | `server-sketch/ib-server/` — patch for Chiang-17/EXVS2-IB-Server: RegisterPcb MATCH+STUN, in-process matchmaker, IB class-match tables, ranked result storage | Builds (Linux + win-x64), unit + fake-cabinet tests pass; **not tested with the game** |
 | STUN | `server-sketch/coturn/turnserver.conf` — STUN-only coturn example (TEST-NET placeholder IPs) | Config only; not deployed |
 | RE tooling | `tools/re/` — Capstone/pefile scripts for xrefs and scans | Source only; the venv and `xrefs.pkl` cache are not in this repo |
 | Project notes | `notes/README.md` — index of what's present, missing, and still open | Informal lab notes |
@@ -56,7 +57,7 @@ Other results, documented in `analysis/matchmaking.md`:
 ```
 analysis/            Matchmaking research and the extracted MMS .proto
 notes/               Lab index (kept as written; some older notes are still missing)
-server-sketch/       Python prototype, C# sketch, coturn example
+server-sketch/       Python prototype, C# sketch, coturn example, ib-server card-server patch
 tools/re/            Reverse-engineering helper scripts (no game binary, no caches)
 ```
 

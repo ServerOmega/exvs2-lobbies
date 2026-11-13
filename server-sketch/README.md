@@ -25,3 +25,6 @@ Notes from RE 2026-11-13 (see `../analysis/matchmaking.md` §7):
 * Game checks only HTTP 200 + parse + `code==SUCCESS`; request_id/type are not checked (server echoes anyway).
 * NAT results never block entry; `nat_mapping`/`nat_filtering` may be 3 or 4 when STUN is single-IP — the
   prototype stores them as plain ints and does not reject them.
+
+## Card server (step 3)
+See [`ib-server/`](ib-server/README.md): a patch for Chiang-17/EXVS2-IB-Server that advertises the match + STUN servers and runs a C# port of this matchmaker in-process. The Python server here remains usable as an external matchmaker (`MatchUrl`).
