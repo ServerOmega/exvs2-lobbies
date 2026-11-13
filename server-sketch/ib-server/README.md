@@ -28,7 +28,7 @@ git am /path/to/exvs2-lobbies/server-sketch/ib-server/online-matchmaking.patch  
 dotnet publish Server-Infinite -c Release -r win-x64
 # or Linux server:
 dotnet build Server-Infinite -c Release -p:LinuxHost=true -o out
-# matchmaker unit tests (10 tests):
+# matchmaker unit tests (18 tests):
 dotnet test Tests/Matchmaking.Tests
 ```
 Copy your existing `ServerInfinite.db` next to the new build if you want to keep cards; the new migration
@@ -46,6 +46,7 @@ In `Configurations/server.json` under `CardServerConfig` → `OnlineMatching`:
 | `PollingIntervalSeconds` | `3` | CheckMatching poll interval sent to the cabinet |
 | `FillAfterSeconds` / `AllowPartialRooms` | `30` / `true` | allow a 1v1 / 2v1 room after this wait |
 | `SoftAttributeWaitSeconds` | `15` | time win-rate bucket / veteran flag must match in free/mix modes |
+| `StaleAfterSeconds` | `20` | drop a waiting cabinet that stopped polling (no ghost matches) |
 | `NodeIdStateFile` / `FirstNodeId` | `mms_nodeids.json` / `1000` | node ids are never reused |
 | `ClassMatchScheduleMode` | `Both` | `Both` / `Hours` / `UnixTime` (upstream) schedule rows in LoadClassMatch |
 | `PersistClassMatchResult` | `true` | store ranked results from SaveVsmOnResult |
@@ -75,6 +76,11 @@ Box result 2026-11-13 (Linux build): RegisterPcb → `SRV_MATCH http://127.0.0.1
 LoadClassMatch parses strictly with schedule hit by hour and by unix time; 2-cabinet team+CPU, 4-solo shuffle,
 pair+2 solos, and 8-cabinet ranked (two classes → two separate rooms) all matched; ranked save round-trip
 (class 1→2, grade 0→7, rate 1500→1512.5, class win +1) OK; 10/10 unit tests pass; Windows (win-x64) build: 0 errors.
+
+Load test 2026-11-13 (`../loadtest/loadtest.py`, 100–500 fake cabinets): see `../../analysis/load-test.md`;
+matchmaker bugs found and fixed in this patch: double room on a repeated entry, node-id takeover by another
+cabinet, ghost matches of cabinets that stopped polling, partner got ERR_MATCH_NOENTRY instead of
+MATCH_CANCELED, one cabinet waiting in two queues at once, wall-clock-based timers.
 
 ## Not done / risks
 * Never run against the real cabinet; hole-punch / P2P format still unknown.

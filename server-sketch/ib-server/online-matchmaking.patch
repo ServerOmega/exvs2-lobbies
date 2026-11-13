@@ -1,34 +1,34 @@
-From 77239c496d7b51f21137b7e90ae6e961c605e5d3 Mon Sep 17 00:00:00 2001
+From 3ff7c3362978af4e54b9186ef6ec946cbf97d1c7 Mon Sep 17 00:00:00 2001
 From: ServerOmega <69215510+ServerOmega@users.noreply.github.com>
 Date: Fri, 13 Nov 2026 07:32:41 -0800
 Subject: [PATCH] Online matchmaking (experimental): STUN+MMS in RegisterPcb,
  Entry/Check/Cancel matchmaker, IB class-match tables, ranked result
- persistence, Linux build option
+ persistence, Linux build option; load-test fixes
 
 ---
- ONLINE_MATCHMAKING.md                         |  50 +++
+ ONLINE_MATCHMAKING.md                         |  65 +++
  .../LoadPlayer/SoloClassInformationCommand.cs |   2 +
  .../LoadPlayer/TeamClassInformationCommand.cs |   2 +
- Server-Infinite/Configurations/server.json    |  16 +
+ Server-Infinite/Configurations/server.json    |  17 +
  .../Controllers/MatchController.cs            |   9 +-
- .../Game/LoadClassMatchCommandHandler.cs      | 107 +++++-
+ .../Game/LoadClassMatchCommandHandler.cs      | 107 ++++-
  .../Online/SaveVsmOnResultCommandHandler.cs   |  72 ++++
  .../Game/RegisterPcbCommandHandler.cs         |  51 +++
- .../Match/MatchIssueNodeIdCommandHandler.cs   |  42 +--
- .../Match/MatchingQueueCommandHandlers.cs     | 104 ++++++
+ .../Match/MatchIssueNodeIdCommandHandler.cs   |  42 +-
+ .../Match/MatchingQueueCommandHandlers.cs     | 106 +++++
  .../Match/MatchingSettingCommandHandler.cs    |   3 +-
- Server-Infinite/Matchmaking/Matchmaker.cs     | 349 ++++++++++++++++++
+ Server-Infinite/Matchmaking/Matchmaker.cs     | 384 ++++++++++++++++++
  .../Matchmaking/NodeIdAllocator.cs            |  56 +++
  .../20261113000000_AddClassMatchGrade.cs      |  37 ++
  .../ServerDbContextModelSnapshot.cs           |   6 +
  .../Cards/Battle/BaseClassMatchRecord.cs      |   5 +
  .../Models/Config/CardServerConfig.cs         |   3 +
- .../Config/OnlineMatchingConfigurations.cs    |  54 +++
- Server-Infinite/Program.cs                    |  19 +
+ .../Config/OnlineMatchingConfigurations.cs    |  56 +++
+ Server-Infinite/Program.cs                    |  20 +
  Server-Infinite/Server-Infinite.csproj        |  11 +
- Tests/Matchmaking.Tests/MatchmakerTests.cs    | 170 +++++++++
+ Tests/Matchmaking.Tests/MatchmakerTests.cs    | 291 +++++++++++++
  .../Matchmaking.Tests.csproj                  |  19 +
- 22 files changed, 1143 insertions(+), 44 deletions(-)
+ 22 files changed, 1320 insertions(+), 44 deletions(-)
  create mode 100644 ONLINE_MATCHMAKING.md
  create mode 100644 Server-Infinite/Handlers/Match/MatchingQueueCommandHandlers.cs
  create mode 100644 Server-Infinite/Matchmaking/Matchmaker.cs
@@ -40,10 +40,10 @@ Subject: [PATCH] Online matchmaking (experimental): STUN+MMS in RegisterPcb,
 
 diff --git a/ONLINE_MATCHMAKING.md b/ONLINE_MATCHMAKING.md
 new file mode 100644
-index 0000000..f9b0d34
+index 0000000..8899f70
 --- /dev/null
 +++ b/ONLINE_MATCHMAKING.md
-@@ -0,0 +1,50 @@
+@@ -0,0 +1,65 @@
 +# Online matchmaking patch (exvs2-lobbies) — EXPERIMENTAL, NOT WORKING IN-GAME YET
 +
 +> ⚠️ This branch has **never been tested with the real game**. Everything is based on static analysis of the
@@ -82,13 +82,28 @@ index 0000000..f9b0d34
 +  "StunUser": "", "StunPass": "",
 +  "PollingIntervalSeconds": 3,
 +  "FillAfterSeconds": 30, "AllowPartialRooms": true,
++  "StaleAfterSeconds": 20,     // drop a waiting cabinet that stopped polling (min 3 x poll interval)
 +  "ClassMatchScheduleMode": "Both"   // Both | Hours | UnixTime
 +}
 +```
 +Environment overrides also work, e.g. `CardServerConfig__OnlineMatching__Enabled=true`.
 +Cabinet side: `battleMode: 0` in the active `testmode_pcb.json` entry (online path instead of the LM).
 +
++## Load-test fixes (2026-11-13, exvs2-lobbies `server-sketch/loadtest`)
++* A repeated EntryMatching (same node + apply_id) after the cabinet was matched no longer queues a second unit
++  (the cabinet used to land in two rooms).
++* A node id held by another cabinet (different `pcb_serial`) is rejected with `ERR_DUPLICATE_ENTRY` instead of
++  replacing / merging into that cabinet's entry; `node_id` 0 is rejected with `ERR_NODEID`.
++* Cabinets that stop polling are dropped after `StaleAfterSeconds` (was matching_timeout + 20 s → ghost players).
++* When a unit ends by timeout, the partner's cancel or staleness, its other cabinet gets `MATCH_CANCELED`
++  instead of `ERR_MATCH_NOENTRY`.
++* One queue slot per cabinet: a new entry from a `pcb_serial` drops that cabinet's older waiting unit.
++* The matchmaker clock is monotonic (`Stopwatch`), so a wall-clock step / VM resume no longer expires every
++  waiting cabinet at once.
++
 +## Known gaps / risks
++* CheckMatching / CancelMatching are not authenticated: anyone who knows a node id can cancel that entry.
++* Malformed protobuf bodies on `/match` get HTTP 500 from the model binder (the real cabinet never sends them).
 +* Hole-punch / P2P packet format unknown; real battles need reachable UDP (public IP/UPnP or a shared VPN).
 +* Mode→world mapping, class ids (1–4) and the hour-based schedule are inferred, not observed.
 +* `Grade1Solo/Team`, promotion matches, Extreme ladder (`LoadRankMatch`) untouched.
@@ -121,10 +136,10 @@ index 7144ea7..f1eff92 100644
          if (teamClassInformation.ClassId < 4)
          {
 diff --git a/Server-Infinite/Configurations/server.json b/Server-Infinite/Configurations/server.json
-index a043d3a..3b5b144 100644
+index a043d3a..0ef1d39 100644
 --- a/Server-Infinite/Configurations/server.json
 +++ b/Server-Infinite/Configurations/server.json
-@@ -22,6 +22,22 @@
+@@ -22,6 +22,23 @@
        "RouteBattleConfigurations": {
          "ResetBadgeExpOnChange": false
        }
@@ -140,6 +155,7 @@ index a043d3a..3b5b144 100644
 +      "FillAfterSeconds": 30,
 +      "AllowPartialRooms": true,
 +      "SoftAttributeWaitSeconds": 15,
++      "StaleAfterSeconds": 20,
 +      "NodeIdStateFile": "mms_nodeids.json",
 +      "FirstNodeId": 1000,
 +      "ClassMatchScheduleMode": "Both",
@@ -548,10 +564,10 @@ index 876eb85..a9dc23e 100644
 +}
 diff --git a/Server-Infinite/Handlers/Match/MatchingQueueCommandHandlers.cs b/Server-Infinite/Handlers/Match/MatchingQueueCommandHandlers.cs
 new file mode 100644
-index 0000000..fbbdb65
+index 0000000..51ea208
 --- /dev/null
 +++ b/Server-Infinite/Handlers/Match/MatchingQueueCommandHandlers.cs
-@@ -0,0 +1,104 @@
+@@ -0,0 +1,106 @@
 +using MediatR;
 +using Microsoft.Extensions.Options;
 +using nue.protocol.mms;
@@ -569,7 +585,9 @@ index 0000000..fbbdb65
 +
 +internal static class MmsClock
 +{
-+    public static double Now => DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() / 1000.0;
++    // Monotonic seconds: matchmaking only uses differences, and a wall-clock step (NTP, VM resume) must not
++    // expire or extend every waiting cabinet at once (seen in the 2026-11-13 load test on the box).
++    public static double Now => System.Diagnostics.Stopwatch.GetTimestamp() / (double)System.Diagnostics.Stopwatch.Frequency;
 +}
 +
 +public class EntryMatchingCommandHandler : IRequestHandler<EntryMatchingCommand, Response>
@@ -646,7 +664,7 @@ index 0000000..fbbdb65
 +    public Task<Response> Handle(CancelMatchingCommand request, CancellationToken cancellationToken)
 +    {
 +        var req = request.Request;
-+        _mm.Cancel(req.cancel_matching?.NodeId ?? 0);   // the game ignores this reply
++        _mm.Cancel(req.cancel_matching?.NodeId ?? 0, MmsClock.Now);   // the game ignores this reply
 +        return Task.FromResult(new Response
 +        {
 +            Type = req.Type,
@@ -672,10 +690,10 @@ index f7dce78..a9abd37 100644
          return Task.FromResult(response);
 diff --git a/Server-Infinite/Matchmaking/Matchmaker.cs b/Server-Infinite/Matchmaking/Matchmaker.cs
 new file mode 100644
-index 0000000..a889cc2
+index 0000000..3aea308
 --- /dev/null
 +++ b/Server-Infinite/Matchmaking/Matchmaker.cs
-@@ -0,0 +1,349 @@
+@@ -0,0 +1,384 @@
 +using nue.protocol.mms;
 +
 +namespace ServerInfinite.Matchmaking;
@@ -698,7 +716,7 @@ index 0000000..a889cc2
 +    public const string NpcSerial = "PCB00000NPC";
 +    public const int TeamSlots = 2;
 +    private const int PoolMax = 12;
-+    private const double StaleAfter = 20;      // s without CheckMatching (on top of matching_timeout)
++    private const double EndedKeep = 120;      // s a dropped unit's nodes still answer MATCH_CANCELED
 +    private const double MatchedKeep = 60;     // s to keep a finished room for late polls
 +    private const uint AGroup = 1, AExtra = 2, ALevel = 4;
 +
@@ -798,12 +816,15 @@ index 0000000..a889cc2
 +    private readonly object _gate = new();
 +    private readonly Dictionary<uint, Unit> _byNode = new();
 +    private readonly List<Unit> _queue = new();
++    private readonly Dictionary<uint, double> _ended = new();   // node -> when its unit was dropped by the server
 +    private readonly Random _rng;
 +    private uint _nextRoom = 1;
 +
 +    public double FillAfter { get; set; }
 +    public bool AllowPartial { get; set; }
 +    public double SoftWait { get; set; }
++    /// <summary>s without CheckMatching (from any of the unit's cabinets) before a waiting unit is dropped.</summary>
++    public double StaleAfter { get; set; } = 20;
 +    public Action<string>? Log { get; set; }
 +
 +    public Matchmaker(double fillAfter = 30, bool allowPartial = true, double softWait = 15, int seed = 0)
@@ -822,8 +843,23 @@ index 0000000..a889cc2
 +        lock (_gate)
 +        {
 +            Sweep(now);
++            // load test 2026-11-13: a node id held by ANOTHER cabinet (different pcb_serial) must not replace or
++            // merge into that cabinet's entry (node ids are sequential, so guessable).
++            if (e.Myclient.NodeId == 0) return ErrorCode.ErrNodeid;   // never issued by IssueNodeId
++            foreach (var c in t.Humans)
++                if (_byNode.TryGetValue(c.NodeId, out var owner) &&
++                    owner.Clients.Any(x => x.NodeId == c.NodeId && x.PcbSerial != c.PcbSerial))
++                    return ErrorCode.ErrDuplicateEntry;
++            // load test 2026-11-13: a repeated EntryMatching (same node, same apply_id) that arrives after the
++            // unit was matched used to queue a second unit -> the cabinet was put into two rooms.
++            if (_byNode.TryGetValue(e.Myclient.NodeId, out var done) && done.Room != null && done.ApplyId == e.ApplyId)
++            {
++                done.LastSeen = now;
++                return ErrorCode.Success;                              // next CheckMatching returns the same room
++            }
 +            foreach (var n in t.NodeIds)
 +            {
++                _ended.Remove(n);
 +                if (!_byNode.TryGetValue(n, out var old) || old.Room != null) continue;
 +                if (old.NodeIds.SetEquals(t.NodeIds))
 +                {
@@ -833,6 +869,11 @@ index 0000000..a889cc2
 +                }
 +                Drop(old);   // re-entry replaces a stale wait
 +            }
++            // load test 2026-11-13: one queue slot per cabinet. A new entry (new node ids) from a cabinet that still
++            // has an older waiting unit (it left without CancelMatching) used to let both match -> two rooms at once.
++            var serials = t.Humans.Select(c => c.PcbSerial).Where(s => !string.IsNullOrEmpty(s)).ToHashSet();
++            foreach (var old in _queue.Where(u => u.Room == null && u.Humans.Any(c => serials.Contains(c.PcbSerial))).ToList())
++                Drop(old, now);
 +            foreach (var n in t.NodeIds) _byNode[n] = t;
 +            _queue.Add(t);
 +            TryMatch(now);
@@ -845,24 +886,27 @@ index 0000000..a889cc2
 +    {
 +        lock (_gate)
 +        {
++            if (_byNode.TryGetValue(nodeId, out var seen)) seen.LastSeen = now;   // before Sweep: the poller is alive
 +            Sweep(now);
-+            if (!_byNode.TryGetValue(nodeId, out var t)) return (ErrorCode.ErrMatchNoentry, null, 0);
++            if (!_byNode.TryGetValue(nodeId, out var t))
++                // the unit was ended by its timeout / partner's cancel / staleness: tell the cabinet, not "no entry"
++                return (_ended.Remove(nodeId) ? ErrorCode.MatchCanceled : ErrorCode.ErrMatchNoentry, null, 0);
 +            t.LastSeen = now;
 +            if (t.Room == null) TryMatch(now);           // bands widen / fill timer runs with time
 +            if (t.Room != null) return (ErrorCode.Success, t.Room, t.ApplyId);
 +            if (now - t.Created > t.Timeout)
 +            {
-+                Drop(t);
++                Drop(t, now, except: nodeId);
 +                return (ErrorCode.MatchCanceled, null, 0);
 +            }
 +            return (ErrorCode.Success, null, 0);         // empty = keep polling
 +        }
 +    }
 +
-+    public void Cancel(uint nodeId)
++    public void Cancel(uint nodeId, double now = 0)
 +    {
 +        lock (_gate)
-+            if (_byNode.TryGetValue(nodeId, out var t) && t.Room == null) Drop(t);
++            if (_byNode.TryGetValue(nodeId, out var t) && t.Room == null) Drop(t, now, except: nodeId);
 +    }
 +
 +    // ---- internals (lock held) ----
@@ -1009,8 +1053,13 @@ index 0000000..a889cc2
 +        Log?.Invoke($"MATCH room={room.RoomId} {all[0].WorldName} {Desc(sides.S0)} vs {Desc(sides.S1)} (humans={room.Humans}/4)");
 +    }
 +
-+    private void Drop(Unit t)
++    /// <summary>Remove a unit. With <paramref name="now"/>, its other human nodes (e.g. the partner of a
++    /// fixed pair) get MATCH_CANCELED on their next poll instead of ERR_MATCH_NOENTRY.</summary>
++    private void Drop(Unit t, double? now = null, uint? except = null)
 +    {
++        if (now != null)
++            foreach (var n in t.NodeIds)
++                if (n != except && _byNode.TryGetValue(n, out var u) && ReferenceEquals(u, t)) _ended[n] = now.Value;
 +        _queue.Remove(t);
 +        foreach (var k in _byNode.Where(kv => ReferenceEquals(kv.Value, t)).Select(kv => kv.Key).ToList())
 +            _byNode.Remove(k);
@@ -1020,9 +1069,13 @@ index 0000000..a889cc2
 +    {
 +        foreach (var t in _byNode.Values.Distinct().ToList())
 +        {
-+            if (t.Room == null && now - t.LastSeen > StaleAfter + t.Timeout) Drop(t);
++            // load test 2026-11-13: was LastSeen > StaleAfter + Timeout, so a cabinet that stopped polling stayed
++            // matchable for ~170 s and was put into rooms as a ghost.
++            if (t.Room == null && now - t.LastSeen > StaleAfter) Drop(t, now);
 +            else if (t.Room != null && now - t.Room.At > MatchedKeep) Drop(t);
 +        }
++        foreach (var n in _ended.Where(kv => now - kv.Value > EndedKeep).Select(kv => kv.Key).ToList())
++            _ended.Remove(n);
 +    }
 +}
 diff --git a/Server-Infinite/Matchmaking/NodeIdAllocator.cs b/Server-Infinite/Matchmaking/NodeIdAllocator.cs
@@ -1186,10 +1239,10 @@ index bf150d5..969bd29 100644
          var options = new JsonSerializerOptions
 diff --git a/Server-Infinite/Models/Config/OnlineMatchingConfigurations.cs b/Server-Infinite/Models/Config/OnlineMatchingConfigurations.cs
 new file mode 100644
-index 0000000..7e9c715
+index 0000000..7805626
 --- /dev/null
 +++ b/Server-Infinite/Models/Config/OnlineMatchingConfigurations.cs
-@@ -0,0 +1,54 @@
+@@ -0,0 +1,56 @@
 +namespace ServerInfinite.Models.Config;
 +
 +/// <summary>
@@ -1226,6 +1279,8 @@ index 0000000..7e9c715
 +    public bool AllowPartialRooms { get; set; } = true;
 +    /// <summary>Seconds during which a "soft" mode attribute (win-rate bucket, veteran flag) must match.</summary>
 +    public double SoftAttributeWaitSeconds { get; set; } = 15;
++    /// <summary>Seconds without a CheckMatching poll before a waiting cabinet is dropped (no ghost matches).</summary>
++    public double StaleAfterSeconds { get; set; } = 20;
 +    /// <summary>File that persists the next node id so ids never repeat across restarts.</summary>
 +    public string NodeIdStateFile { get; set; } = "mms_nodeids.json";
 +    /// <summary>First node id handed out on a fresh install.</summary>
@@ -1245,7 +1300,7 @@ index 0000000..7e9c715
 +    public bool PersistClassMatchResult { get; set; } = true;
 +}
 diff --git a/Server-Infinite/Program.cs b/Server-Infinite/Program.cs
-index 1745d32..600602c 100644
+index 1745d32..b1322cc 100644
 --- a/Server-Infinite/Program.cs
 +++ b/Server-Infinite/Program.cs
 @@ -28,7 +28,9 @@ var failed = false;
@@ -1258,7 +1313,7 @@ index 1745d32..600602c 100644
      SQLitePCL.Batteries_V2.Init();
      
      var builder = WebApplication.CreateBuilder(args);
-@@ -67,6 +69,23 @@ try
+@@ -67,6 +69,24 @@ try
      builder.Services.AddSingleton<ServerInfinite.Processor.Tracker.ITrackerCatalog>(sp =>
          new ServerInfinite.Processor.Tracker.TrackerCatalog(sp.GetRequiredService<IWebHostEnvironment>().WebRootFileProvider));
      builder.Services.AddMemoryCache();
@@ -1276,7 +1331,8 @@ index 1745d32..600602c 100644
 +        return new ServerInfinite.Matchmaking.Matchmaker(mm.FillAfterSeconds, mm.AllowPartialRooms,
 +            mm.SoftAttributeWaitSeconds, mm.ShuffleSeed)
 +        {
-+            Log = message => logger.LogInformation("{Message}", message)
++            Log = message => logger.LogInformation("{Message}", message),
++            StaleAfter = Math.Max(3 * Math.Max(1u, mm.PollingIntervalSeconds), mm.StaleAfterSeconds)
 +        };
 +    });
      builder.Services.AddHttpContextAccessor();
@@ -1306,10 +1362,10 @@ index 519b7c9..2206c64 100644
      <Compile Remove="Services\**" />
 diff --git a/Tests/Matchmaking.Tests/MatchmakerTests.cs b/Tests/Matchmaking.Tests/MatchmakerTests.cs
 new file mode 100644
-index 0000000..957c62e
+index 0000000..36a3259
 --- /dev/null
 +++ b/Tests/Matchmaking.Tests/MatchmakerTests.cs
-@@ -0,0 +1,170 @@
+@@ -0,0 +1,291 @@
 +using nue.protocol.mms;
 +using ServerInfinite.Matchmaking;
 +using Xunit;
@@ -1352,7 +1408,8 @@ index 0000000..957c62e
 +        return e;
 +    }
 +
-+    private static Matchmaker New() => new(fillAfter: 30, allowPartial: true, softWait: 15, seed: 1);
++    // StaleAfter is raised because these tests jump the clock without the other cabinets polling.
++    private static Matchmaker New() => new(fillAfter: 30, allowPartial: true, softWait: 15, seed: 1) { StaleAfter = 1e6 };
 +
 +    [Fact]
 +    public void FourSolosAreShuffledIntoTwoPairs()
@@ -1424,7 +1481,7 @@ index 0000000..957c62e
 +    [Fact]
 +    public void RankedLevelBandWidensWithTime()
 +    {
-+        var mm = new Matchmaker(fillAfter: 1000, allowPartial: false, seed: 1);
++        var mm = new Matchmaker(fillAfter: 1000, allowPartial: false, seed: 1) { StaleAfter = 1e6 };
 +        var es = new[] { Entry(13, "S", 2, 1), Entry(13, "S", 2, 1), Entry(13, "S", 2, 3), Entry(13, "S", 2, 3) };
 +        foreach (var e in es) mm.Entry(e, 0);
 +        Assert.Null(mm.Check(es[0].Myclient.NodeId, 10).Room);   // |1-3| = 2 > band 0/1
@@ -1459,11 +1516,131 @@ index 0000000..957c62e
 +    [Fact]
 +    public void BlacklistedCardIsNotMatched()
 +    {
-+        var mm = new Matchmaker(fillAfter: 0, allowPartial: true, seed: 1);
++        var mm = new Matchmaker(fillAfter: 0, allowPartial: true, seed: 1) { StaleAfter = 1e6 };
 +        var a = Entry(23); var b = Entry(23);
 +        a.BlBanapassportAmIds = new[] { b.Myplayer.BanapassportAmId };
 +        mm.Entry(a, 0); mm.Entry(b, 0);
 +        Assert.Null(mm.Check(a.Myclient.NodeId, 100).Room);
++    }
++
++    // ---- regressions found by server-sketch/loadtest (2026-11-13) ----
++
++    [Fact]
++    public void PartnerOfTimedOutPairGetsMatchCanceledNotNoEntry()
++    {
++        var mm = New();
++        var pair = Entry(14, "T", attr2: 3, timeout: 60);
++        var partner = pair.Groups[0].Client.NodeId;
++        mm.Entry(pair, 0);
++        Assert.Equal(ErrorCode.MatchCanceled, mm.Check(partner, 61).Code);              // partner polls first
++        Assert.Equal(ErrorCode.MatchCanceled, mm.Check(pair.Myclient.NodeId, 62).Code);  // was ERR_MATCH_NOENTRY
++        Assert.Equal(ErrorCode.ErrMatchNoentry, mm.Check(pair.Myclient.NodeId, 63).Code);
++    }
++
++    [Fact]
++    public void PartnerOfCancelledPairGetsMatchCanceled()
++    {
++        var mm = New();
++        var pair = Entry(23, "T");
++        mm.Entry(pair, 0);
++        mm.Cancel(pair.Myclient.NodeId, 5);
++        Assert.Equal(ErrorCode.MatchCanceled, mm.Check(pair.Groups[0].Client.NodeId, 6).Code);
++        Assert.Equal(ErrorCode.ErrMatchNoentry, mm.Check(pair.Myclient.NodeId, 6).Code);
++    }
++
++    [Fact]
++    public void CabinetThatStoppedPollingIsNotMatched()
++    {
++        var mm = new Matchmaker(fillAfter: 30, allowPartial: true, softWait: 15, seed: 1);   // default StaleAfter 20 s
++        var gone = Entry(23);
++        mm.Entry(gone, 0);                                     // never polls again
++        var es = Enumerable.Range(0, 3).Select(_ => Entry(23)).ToList();
++        foreach (var e in es) mm.Entry(e, 25);
++        foreach (var e in es) Assert.Null(mm.Check(e.Myclient.NodeId, 26).Room);   // no room with the ghost
++        Assert.Equal(ErrorCode.MatchCanceled, mm.Check(gone.Myclient.NodeId, 27).Code);
++        var fourth = Entry(23);
++        mm.Entry(fourth, 27);
++        var room = mm.Check(es[0].Myclient.NodeId, 28).Room;
++        Assert.NotNull(room);
++        Assert.DoesNotContain(room!.Clients, c => c.Client.NodeId == gone.Myclient.NodeId);
++    }
++
++    [Fact]
++    public void ForeignCabinetCannotTakeOverANodeId()
++    {
++        var mm = New();
++        var victim = Entry(23, "T");
++        mm.Entry(victim, 0);
++        var evil = Entry(23);
++        evil.Myclient.NodeId = victim.Myclient.NodeId;        // guessed node id, different pcb_serial
++        evil.Myclient.PcbSerial = "EVIL";
++        Assert.Equal(ErrorCode.ErrDuplicateEntry, mm.Entry(evil, 1));
++        Assert.Equal(1, mm.QueueLength);
++        var es = Enumerable.Range(0, 2).Select(_ => Entry(23)).ToList();
++        foreach (var e in es) mm.Entry(e, 2);
++        var room = mm.Check(victim.Myclient.NodeId, 3).Room;
++        Assert.NotNull(room);                                  // victim's pair still matched normally
++        Assert.Contains(room!.Clients, c => c.Client.NodeId == victim.Groups[0].Client.NodeId);
++        Assert.DoesNotContain(room.Clients, c => c.Client.PcbSerial == "EVIL");
++    }
++
++    [Fact]
++    public void SameCabinetReEntryAndPartnerEntryStillWork()
++    {
++        var mm = New();
++        var pair = Entry(23, "T");
++        mm.Entry(pair, 0);
++        var own = new Request.EntryMatching
++        {
++            ApplyId = 2, Myclient = pair.Groups[0].Client, Myplayer = pair.Groups[0].Player,
++            World = pair.World, MatchingTimeout = 150
++        };
++        own.Groups.Add(new Request.EntryMatching.Group { Client = pair.Myclient, Player = pair.Myplayer });
++        Assert.Equal(ErrorCode.Success, mm.Entry(own, 1));     // partner's own entry merges
++        Assert.Equal(ErrorCode.Success, mm.Entry(pair, 2));    // duplicate entry from the same cabinet
++        Assert.Equal(1, mm.QueueLength);
++    }
++
++    [Fact]
++    public void DuplicateEntryAfterMatchDoesNotCreateASecondRoom()
++    {
++        var mm = New();
++        var es = Enumerable.Range(0, 4).Select(_ => Entry(23)).ToList();
++        foreach (var e in es) mm.Entry(e, 0);
++        var room = mm.Check(es[0].Myclient.NodeId, 1).Room;
++        Assert.NotNull(room);
++        Assert.Equal(ErrorCode.Success, mm.Entry(es[0], 2));   // retried / duplicated entry
++        Assert.Equal(0, mm.QueueLength);
++        var more = Enumerable.Range(0, 3).Select(_ => Entry(23)).ToList();
++        foreach (var e in more) mm.Entry(e, 3);
++        Assert.Same(room, mm.Check(es[0].Myclient.NodeId, 4).Room);
++        Assert.Null(mm.Check(more[0].Myclient.NodeId, 4).Room);
++    }
++
++    [Fact]
++    public void NewEntryFromSameCabinetReplacesItsOldWait()
++    {
++        var mm = New();
++        var old = Entry(15, attr2: 7);
++        mm.Entry(old, 0);                                       // left the in-store queue without cancelling
++        var again = Entry(23);
++        again.Myclient.PcbSerial = old.Myclient.PcbSerial;      // same cabinet, new node ids, other mode
++        mm.Entry(again, 5);
++        Assert.Equal(1, mm.QueueLength);
++        Assert.Equal(ErrorCode.MatchCanceled, mm.Check(old.Myclient.NodeId, 6).Code);
++        var mate = Entry(15, attr2: 7);
++        mm.Entry(mate, 7);
++        Assert.Null(mm.Check(mate.Myclient.NodeId, 100).Room);  // the old wait can no longer be matched
++    }
++
++    [Fact]
++    public void EntryWithNodeIdZeroIsRejected()
++    {
++        var mm = New();
++        var e = Entry(23);
++        e.Myclient.NodeId = 0;
++        Assert.Equal(ErrorCode.ErrNodeid, mm.Entry(e, 0));
++        Assert.Equal(0, mm.QueueLength);
 +    }
 +
 +    [Fact]

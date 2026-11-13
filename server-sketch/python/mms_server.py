@@ -35,7 +35,8 @@ ERR_REQUEST, ERR_SERVER, ERR_MAINTENANCE, ERR_MATCH_NOENTRY = 100, 101, 102, 103
 ERR_NODEID, ERR_MATCH_CONDITION, ERR_DUPLICATE_ENTRY = 200, 201, 202
 NPC_SERIAL = 'PCB00000NPC'          # CPU stand-in a TEAM-sortie entry puts in groups[0] (property "N")
 POLL_INTERVAL = 3                   # PROCESS_WAIT_POLING_INTERVAL from the proto
-STALE_AFTER = 20                    # s without CheckMatching -> drop entry
+STALE_AFTER = 20                    # s without CheckMatching -> drop entry (no ghost matches)
+ENDED_KEEP = 120                    # s a dropped unit's other nodes still get MATCH_CANCELED
 MATCHED_KEEP = 60                   # s to keep a finished room for late polls
 
 # Ranked (Class Match G).  world ids from the client's mode->world table (0x140753330), see ranked-matching.md §2.
@@ -213,9 +214,11 @@ class Matchmaker:
        After FILL_AFTER seconds the oldest waiter may get a short-handed room (>= 2 humans, e.g. 1v1, 2v1);
        empty seats are expected to be CPU-controlled by the cabinets [L - open question for a live test].
        group_id is decided by the server: the client only derives "same team as the first listed client"."""
-    def __init__(self, ratings=None, fill_after=FILL_AFTER, partial=True, seed=None):
+    def __init__(self, ratings=None, fill_after=FILL_AFTER, partial=True, seed=None, stale_after=STALE_AFTER):
         import random
         self.lock = threading.Lock()
+        self.stale_after = stale_after
+        self.ended = {}        # node_id -> time its unit was dropped by the server (-> MATCH_CANCELED once)
         self.by_node = {}      # node_id -> Unit (every human node of a unit points to it)
         self.queue = []        # waiting units, FIFO
         self.rooms = {}        # room_id -> {'groups': {0: am_ids, 1: am_ids}, 'world':, 'at':}
@@ -226,10 +229,26 @@ class Matchmaker:
 
     def entry(self, e, now):
         t = Unit(e, now, self.ratings)
+        if not e['myclient'].get('node_id'):
+            return ERR_NODEID                                         # never issued by IssueNodeId
         with self.lock:
             self._sweep(now)
+            # load test 2026-11-13: a node id held by ANOTHER cabinet (different pcb_serial) must not replace
+            # or merge into that cabinet's entry (node ids are sequential, so guessable).
+            for c in t.humans():
+                owner = self.by_node.get(c['node_id'])
+                if owner and any(x['node_id'] == c['node_id'] and x.get('pcb_serial') != c.get('pcb_serial')
+                                 for x in owner.clients):
+                    return ERR_DUPLICATE_ENTRY
+            # load test: a repeated entry (same node + apply_id) after the unit was matched must not queue a
+            # second unit (the cabinet ended up in two rooms); the next CheckMatching returns the same room.
+            done = self.by_node.get(t.leader)
+            if done and done.room is not None and done.apply_id == t.apply_id:
+                done.last_seen = now
+                return SUCCESS
             # A partner cabinet may send its own entry naming the leader as its group: merge.
             for n in t.node_ids():
+                self.ended.pop(n, None)
                 old = self.by_node.get(n)
                 if old and old.room is None and old.node_ids() == t.node_ids():
                     old.last_seen = now
@@ -237,6 +256,11 @@ class Matchmaker:
                     return SUCCESS
                 if old and old.room is None:
                     self._drop(old)                                   # re-entry replaces stale wait
+            # load test 2026-11-13: one queue slot per cabinet; an older waiting unit of the same cabinet (left
+            # without CancelMatching, then re-entered with new node ids) used to match too -> two rooms at once.
+            serials = {c.get('pcb_serial') for c in t.humans() if c.get('pcb_serial')}
+            for old in [u for u in self.queue if u.room is None and any(c.get('pcb_serial') in serials for c in u.humans())]:
+                self._drop(old, now)
             for n in t.node_ids(): self.by_node[n] = t
             self.queue.append(t)
             self._try_match(now)
@@ -247,20 +271,23 @@ class Matchmaker:
 
     def check(self, node_id, now):
         with self.lock:
+            seen = self.by_node.get(node_id)
+            if seen: seen.last_seen = now                             # before the sweep: the poller is alive
             self._sweep(now)
             t = self.by_node.get(node_id)
-            if t is None: return ERR_MATCH_NOENTRY, None
+            if t is None:                                             # ended by timeout / partner cancel / staleness
+                return (MATCH_CANCELED if self.ended.pop(node_id, None) is not None else ERR_MATCH_NOENTRY), None
             t.last_seen = now
             if t.room is None: self._try_match(now)                   # bands widen / fill timer runs with time
             if t.room: return SUCCESS, t.room
             if now - t.created > t.timeout:
-                self._drop(t); return MATCH_CANCELED, None            # game falls back (CPU battle) [M]
+                self._drop(t, now, node_id); return MATCH_CANCELED, None            # game falls back (CPU battle) [M]
             return SUCCESS, None                                      # empty = keep polling
 
-    def cancel(self, node_id):
+    def cancel(self, node_id, now=0):
         with self.lock:
             t = self.by_node.get(node_id)
-            if t and t.room is None: self._drop(t)
+            if t and t.room is None: self._drop(t, now, node_id)
 
     def result(self, room_id, winner_group):
         with self.lock:
@@ -330,15 +357,21 @@ class Matchmaker:
         log.info('MATCH room=%d %s %s vs %s (humans=%d/4)', room_id, sides[0][0].wname,
                  desc(sides[0]), desc(sides[1]), self.rooms[room_id]['humans'])
 
-    def _drop(self, t):
+    def _drop(self, t, now=None, except_node=None):
+        if now is not None:                       # its other nodes (pair partner) get MATCH_CANCELED, not NOENTRY
+            for n in t.node_ids():
+                if n != except_node and self.by_node.get(n) is t: self.ended[n] = now
         if t in self.queue: self.queue.remove(t)
         for n in list(self.by_node):
             if self.by_node[n] is t: del self.by_node[n]
 
     def _sweep(self, now):
         for t in set(self.by_node.values()):
-            if t.room is None and now - t.last_seen > STALE_AFTER + t.timeout: self._drop(t)
+            # load test 2026-11-13: was last_seen > STALE_AFTER + timeout (~170 s of ghost matches)
+            if t.room is None and now - t.last_seen > self.stale_after: self._drop(t, now)
             elif t.room and now - t.room['at'] > MATCHED_KEEP: self._drop(t)
+        for n in [n for n, at in self.ended.items() if now - at > ENDED_KEEP]:
+            del self.ended[n]
         for rid in [r for r, v in self.rooms.items() if now - v['at'] > 3600]:
             del self.rooms[rid]
 
@@ -358,7 +391,7 @@ class Mms:
             return encode('Response', {'type': 0, 'request_id': '', 'code': ERR_REQUEST})
         rtype, rid = req.get('type', 0), req.get('request_id', '')
         resp = {'type': rtype, 'request_id': rid, 'code': SUCCESS}   # always echo type + request_id
-        now = time.time()
+        now = time.monotonic()      # differences only; immune to wall-clock steps (NTP / VM resume)
         if rtype == PING:
             resp['ping'] = {}
         elif rtype == ISSUE_NODE_ID:
@@ -382,7 +415,7 @@ class Mms:
                 body_ = {'room_id': room['room_id'], 'apply_id': room['apply_id'], 'clients': room['clients']}
             resp['check_matching'] = body_
         elif rtype == CANCEL:
-            self.mm.cancel(req.get('cancel_matching', {}).get('node_id', 0))
+            self.mm.cancel(req.get('cancel_matching', {}).get('node_id', 0), now)
             resp['cancel_matching'] = {}
         elif rtype == MATCHING_SETTING:
             resp['matching_setting'] = {}
@@ -395,6 +428,7 @@ class Mms:
 def make_handler(mms, result_token=None):
     class H(BaseHTTPRequestHandler):
         protocol_version = 'HTTP/1.1'
+        disable_nagle_algorithm = True     # load test: headers + body are 2 writes -> 40 ms delayed-ACK stall
         def _send(self, code, out, ctype='application/x-protobuf'):
             self.send_response(code)
             self.send_header('Content-Type', ctype)
@@ -431,10 +465,13 @@ def main():
     ap.add_argument('--fill-after', type=float, default=FILL_AFTER,
                     help='seconds before a short-handed room (1v1, 2v1) may be formed')
     ap.add_argument('--no-partial', action='store_true', help='only ever form full 4-human-slot rooms')
+    ap.add_argument('--stale-after', type=float, default=STALE_AFTER,
+                    help='seconds without CheckMatching before a waiting cabinet is dropped')
     ap.add_argument('-v', action='store_true')
     a = ap.parse_args()
     logging.basicConfig(level=logging.DEBUG if a.v else logging.INFO, format='%(asctime)s %(name)s %(message)s')
-    mms = Mms(NodeIdAllocator(a.state), Matchmaker(RatingStore(a.ratings), a.fill_after, not a.no_partial))
+    mms = Mms(NodeIdAllocator(a.state), Matchmaker(RatingStore(a.ratings), a.fill_after, not a.no_partial,
+                                                                 stale_after=max(a.stale_after, 3 * POLL_INTERVAL)))
     srv = ThreadingHTTPServer((a.host, a.port), make_handler(mms, a.result_token))
     log.info('listening on http://%s:%d/mms', a.host, a.port)
     srv.serve_forever()

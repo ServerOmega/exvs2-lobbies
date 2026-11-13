@@ -2,7 +2,8 @@
 """Deterministic tests for the casual/shuffle matcher in mms_server.py (no network, injected clock).
 Run: python3 test_casual.py      EXPERIMENTAL: shapes follow static analysis, untested in game."""
 import unittest
-from mms_server import Matchmaker, RatingStore, SUCCESS, MATCH_CANCELED, NPC_SERIAL
+from mms_server import (Matchmaker, RatingStore, SUCCESS, MATCH_CANCELED, NPC_SERIAL, ERR_MATCH_NOENTRY,
+                        ERR_DUPLICATE_ENTRY, ERR_NODEID)
 
 _n = [100]
 def nid():
@@ -27,7 +28,7 @@ def entry(world, sortie='S', attr2=0, level=0, loc=None, timeout=150):
 
 class Casual(unittest.TestCase):
     def setUp(self):
-        self.mm = Matchmaker(RatingStore(), fill_after=30, partial=True, seed=1)
+        self.mm = Matchmaker(RatingStore(), fill_after=30, partial=True, seed=1, stale_after=1e6)  # clock jumps w/o polls
 
     def enter(self, *es, t=0):
         for e in es: self.assertEqual(self.mm.entry(e, t), SUCCESS)
@@ -96,14 +97,14 @@ class Casual(unittest.TestCase):
         self.assertIsNotNone(self.room(ids[1], t=16))                  # after SOFT_WAIT buckets mix
 
     def test_no_partial(self):
-        mm = Matchmaker(RatingStore(), fill_after=30, partial=False)
+        mm = Matchmaker(RatingStore(), fill_after=30, partial=False, stale_after=1e6)
         es = [entry(23, 'S', timeout=60) for _ in range(2)]
         for e in es: mm.entry(e, 0)
         self.assertEqual(mm.check(es[0]['myclient']['node_id'], 40), (SUCCESS, None))
         self.assertEqual(mm.check(es[0]['myclient']['node_id'], 61)[0], MATCH_CANCELED)
 
     def test_ranked_solo_even_split(self):
-        rs = RatingStore(); mm = Matchmaker(rs, seed=2)
+        rs = RatingStore(); mm = Matchmaker(rs, seed=2, stale_after=1e6)
         es = [entry(13, 'S', attr2=5, level=0) for _ in range(4)]
         for e, v in zip(es, (1900, 1500, 1500, 1100)): rs.r[e['myplayer']['banapassport_am_id']] = v
         for e in es: mm.entry(e, 0)
@@ -112,6 +113,70 @@ class Casual(unittest.TestCase):
         for c in r['clients']: g.setdefault(c['group_id'], set()).add(c['client']['node_id'])
         top, low = es[0]['myclient']['node_id'], es[3]['myclient']['node_id']
         self.assertTrue(any({top, low} <= s for s in g.values()))   # strongest paired with weakest
+
+class LoadTestRegressions(unittest.TestCase):
+    """Bugs found by server-sketch/loadtest/loadtest.py (2026-11-13)."""
+    def setUp(self):
+        self.mm = Matchmaker(RatingStore(), fill_after=30, partial=True, seed=1, stale_after=1e6)
+
+    def test_partner_of_timed_out_pair_gets_match_canceled(self):
+        e = entry(14, 'T', attr2=3, timeout=60); p = e['groups'][0]['client']['node_id']
+        self.mm.entry(e, 0)
+        self.assertEqual(self.mm.check(p, 61)[0], MATCH_CANCELED)
+        self.assertEqual(self.mm.check(e['myclient']['node_id'], 62)[0], MATCH_CANCELED)   # was ERR_MATCH_NOENTRY
+        self.assertEqual(self.mm.check(e['myclient']['node_id'], 63)[0], ERR_MATCH_NOENTRY)
+
+    def test_partner_of_cancelled_pair_gets_match_canceled(self):
+        e = entry(23, 'T'); self.mm.entry(e, 0)
+        self.mm.cancel(e['myclient']['node_id'], 5)
+        self.assertEqual(self.mm.check(e['groups'][0]['client']['node_id'], 6)[0], MATCH_CANCELED)
+
+    def test_silent_cabinet_not_matched(self):
+        mm = Matchmaker(RatingStore(), fill_after=30, partial=True, seed=1)      # default stale_after 20 s
+        gone = entry(23); mm.entry(gone, 0)
+        es = [entry(23) for _ in range(3)]
+        for x in es: mm.entry(x, 25)
+        self.assertIsNone(mm.check(es[0]['myclient']['node_id'], 26)[1])
+        self.assertEqual(mm.check(gone['myclient']['node_id'], 27)[0], MATCH_CANCELED)
+        mm.entry(entry(23), 27)
+        r = mm.check(es[0]['myclient']['node_id'], 28)[1]
+        self.assertNotIn(gone['myclient']['node_id'], {c['client']['node_id'] for c in r['clients']})
+
+    def test_foreign_node_id_rejected(self):
+        v = entry(23, 'T'); self.mm.entry(v, 0)
+        evil = entry(23); evil['myclient'] = dict(evil['myclient'], node_id=v['myclient']['node_id'], pcb_serial='EVIL')
+        self.assertEqual(self.mm.entry(evil, 1), ERR_DUPLICATE_ENTRY)
+        self.assertEqual(len(self.mm.queue), 1)
+
+    def test_duplicate_entry_after_match_no_second_room(self):
+        es = [entry(23) for _ in range(4)]
+        for x in es: self.mm.entry(x, 0)
+        r = self.mm.check(es[0]['myclient']['node_id'], 1)[1]; self.assertIsNotNone(r)
+        self.assertEqual(self.mm.entry(es[0], 2), SUCCESS)
+        self.assertEqual(len(self.mm.queue), 0)
+        for x in [entry(23) for _ in range(3)]: self.mm.entry(x, 3)
+        self.assertEqual(self.mm.check(es[0]['myclient']['node_id'], 4)[1]['room_id'], r['room_id'])
+
+    def test_partner_own_entry_and_duplicate_still_merge(self):
+        e = entry(23, 'T'); self.mm.entry(e, 0)
+        own = dict(e, myclient=e['groups'][0]['client'], myplayer=e['groups'][0]['player'],
+                   groups=[{'client': e['myclient'], 'player': e['myplayer']}])
+        self.assertEqual(self.mm.entry(own, 1), SUCCESS)
+        self.assertEqual(self.mm.entry(e, 2), SUCCESS)
+        self.assertEqual(len(self.mm.queue), 1)
+
+    def test_new_entry_from_same_cabinet_replaces_old_wait(self):
+        old = entry(15, attr2=7); self.mm.entry(old, 0)
+        again = entry(23); again['myclient'] = dict(again['myclient'], pcb_serial=old['myclient']['pcb_serial'])
+        self.mm.entry(again, 5)
+        self.assertEqual(len(self.mm.queue), 1)
+        self.assertEqual(self.mm.check(old['myclient']['node_id'], 6)[0], MATCH_CANCELED)
+        mate = entry(15, attr2=7); self.mm.entry(mate, 7)
+        self.assertIsNone(self.mm.check(mate['myclient']['node_id'], 100)[1])
+
+    def test_node_zero_rejected(self):
+        e = entry(23); e['myclient'] = dict(e['myclient'], node_id=0)
+        self.assertEqual(self.mm.entry(e, 0), ERR_NODEID)
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)

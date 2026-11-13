@@ -8,6 +8,7 @@ Everything here is **untested in the real game**. Tick items off as they're veri
 - [ ] Get a card server whose RegisterPcb returns the match server `uri` plus a SRV_STUN entry; confirm IssueNodeId hits our server — build the patched EXVS2-IB-Server from [`server-sketch/ib-server`](server-sketch/ib-server/README.md) (box-tested with fake cabinets only)
 
 ## Basic matchmaking
+- [x] Box load test with 100 / 200 / 500 fake cabinets against both matchmakers — no invariant violations after fixes ([analysis/load-test.md](analysis/load-test.md)); fake cabinets only
 - [ ] EntryMatching + CheckMatching polling reaches the matchmaker (built-in `/match` or `mms_server.py`; capture with tcpdump)
 - [ ] A matched room actually starts a battle; capture the cabinet-to-cabinet (hole-punch / P2P) packet format
 - [ ] Play modes 1–6 land in separate queues; `battleMode` values other than 0 still use the LM path
