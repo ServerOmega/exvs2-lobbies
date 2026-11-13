@@ -169,7 +169,7 @@ How to read it:
 | Idea | Effort | Value |
 |---|---|---|
 | ~~Log per entry~~ / ~~warn on mismatch~~ | — | **done** (above) |
-| **Keep overlay and internet players in separate buckets** (e.g. global IP in 100.64/10, 26/8, 25/8 or a configured overlay CIDR) | small | prevents the mixed case in §5 |
+| ~~Keep overlay and internet players apart~~ | — | **done** 2026-11-13: network realms ([lm-and-online.md §3.2](lm-and-online.md#32-network-realms-who-can-reach-whom)), C# `NetworkRealms`, Python `--realms` |
 | **Advertised-IP override** per pcb_serial (config) or "use HTTP source IP as global when STUN failed (0.0.0.0)" | small-medium | rescues broken STUN; risky if the source IP is a proxy |
 | **NAT-aware pairing**: avoid symmetric↔symmetric (mapping/filtering values), fall back after a wait | medium | only useful with a 2-IP STUN |
 | **Same-NAT detection**: same global IP → already handled by the client (local dial) **[C]**; the server could only warn when local IPs are equal | small | catches two instances on one IP |

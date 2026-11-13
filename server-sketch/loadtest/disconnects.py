@@ -61,7 +61,8 @@ class Cab:
         if sortie == 'TN':
             groups = [{'client': L.client(self.npc, L.NPC, self.loc, '0.0.0.0', 0, human=False), 'player': {'banapassport_am_id': 0}}]
         elif sortie == 'T':
-            groups = [{'client': L.client(partner.node, partner.serial, partner.loc, '198.18.200.2', 41000),
+            # the leader relays the partner's own STUN result: same global IP the partner sends in its own entries
+            groups = [{'client': L.client(partner.node, partner.serial, partner.loc, '198.18.200.1', 41000),
                        'player': {'banapassport_am_id': partner.am}}]
         e = {'apply_id': self.apply, 'myclient': L.client(node, self.serial, self.loc, '198.18.200.1', 40000),
              'myplayer': {'banapassport_am_id': self.am,

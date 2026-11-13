@@ -1,4 +1,4 @@
-From d7c73e9462770a1c8aa0ab1606e06d710e4a023b Mon Sep 17 00:00:00 2001
+From d08b7274aec234175cc0822613e5c9101beacae3 Mon Sep 17 00:00:00 2001
 From: ServerOmega <69215510+ServerOmega@users.noreply.github.com>
 Date: Fri, 13 Nov 2026 07:32:41 -0800
 Subject: [PATCH] Online matchmaking (experimental): STUN+MMS in RegisterPcb,
@@ -6,7 +6,7 @@ Subject: [PATCH] Online matchmaking (experimental): STUN+MMS in RegisterPcb,
  persistence, Linux build option; load-test fixes
 
 ---
- ONLINE_MATCHMAKING.md                         |  95 ++++
+ ONLINE_MATCHMAKING.md                         | 107 ++++
  .../LoadPlayer/SoloClassInformationCommand.cs |   2 +
  .../LoadPlayer/TeamClassInformationCommand.cs |   2 +
  Server-Infinite/Configurations/server.json    |  17 +
@@ -15,21 +15,21 @@ Subject: [PATCH] Online matchmaking (experimental): STUN+MMS in RegisterPcb,
  .../Online/SaveVsmOnResultCommandHandler.cs   |  72 +++
  .../Game/RegisterPcbCommandHandler.cs         |  76 ++-
  .../Match/MatchIssueNodeIdCommandHandler.cs   |  42 +-
- .../Match/MatchingQueueCommandHandlers.cs     | 111 +++++
+ .../Match/MatchingQueueCommandHandlers.cs     | 111 ++++
  .../Match/MatchingSettingCommandHandler.cs    |   3 +-
- Server-Infinite/Matchmaking/Matchmaker.cs     | 452 +++++++++++++++++
- Server-Infinite/Matchmaking/NetDiag.cs        |  65 +++
- .../Matchmaking/NodeIdAllocator.cs            |  61 +++
+ Server-Infinite/Matchmaking/Matchmaker.cs     | 460 +++++++++++++++
+ Server-Infinite/Matchmaking/NetDiag.cs        | 102 ++++
+ .../Matchmaking/NodeIdAllocator.cs            |  61 ++
  .../20261113000000_AddClassMatchGrade.cs      |  37 ++
  .../ServerDbContextModelSnapshot.cs           |   6 +
  .../Cards/Battle/BaseClassMatchRecord.cs      |   5 +
  .../Models/Config/CardServerConfig.cs         |   3 +
- .../Config/OnlineMatchingConfigurations.cs    |  58 +++
- Server-Infinite/Program.cs                    |  28 +-
+ .../Config/OnlineMatchingConfigurations.cs    |  65 +++
+ Server-Infinite/Program.cs                    |  29 +-
  Server-Infinite/Server-Infinite.csproj        |  11 +
- Tests/Matchmaking.Tests/MatchmakerTests.cs    | 455 ++++++++++++++++++
+ Tests/Matchmaking.Tests/MatchmakerTests.cs    | 528 ++++++++++++++++++
  .../Matchmaking.Tests.csproj                  |  19 +
- 23 files changed, 1690 insertions(+), 46 deletions(-)
+ 23 files changed, 1828 insertions(+), 46 deletions(-)
  create mode 100644 ONLINE_MATCHMAKING.md
  create mode 100644 Server-Infinite/Handlers/Match/MatchingQueueCommandHandlers.cs
  create mode 100644 Server-Infinite/Matchmaking/Matchmaker.cs
@@ -42,10 +42,10 @@ Subject: [PATCH] Online matchmaking (experimental): STUN+MMS in RegisterPcb,
 
 diff --git a/ONLINE_MATCHMAKING.md b/ONLINE_MATCHMAKING.md
 new file mode 100644
-index 0000000..e9deca1
+index 0000000..90a28df
 --- /dev/null
 +++ b/ONLINE_MATCHMAKING.md
-@@ -0,0 +1,95 @@
+@@ -0,0 +1,107 @@
 +# Online matchmaking patch (exvs2-lobbies) — EXPERIMENTAL, NOT WORKING IN-GAME YET
 +
 +> ⚠️ This branch has **never been tested with the real game**. Everything is based on static analysis of the
@@ -86,7 +86,8 @@ index 0000000..e9deca1
 +  "FillAfterSeconds": 30, "AllowPartialRooms": true,
 +  "StaleAfterSeconds": 20,     // drop a waiting cabinet that stopped polling (min 3 x poll interval)
 +  "ClassMatchScheduleMode": "Both",  // Both | Hours | UnixTime
-+  "VerboseLog": false          // true = also one line per CheckMatching poll (debugging only)
++  "VerboseLog": false,         // true = also one line per CheckMatching poll (debugging only)
++  "NetworkRealms": ""          // "" = default realms, "off" = none, or "name=cidr,name=cidr"
 +}
 +```
 +Environment overrides also work, e.g. `CardServerConfig__OnlineMatching__Enabled=true` (env vars are
@@ -130,6 +131,17 @@ index 0000000..e9deca1
 +  cancelled by node N / stopped polling (stale)).
 +* `VerboseLog: true` adds `check node=N -> <code> room=R` per poll.
 +Request source is the TCP peer (`RemoteIpAddress`, IPv4-mapped shown as IPv4); proxy headers are not trusted.
++
++## One server for LM and non-LM players (2026-11-13, exvs2-lobbies `analysis/lm-and-online.md`)
++Every cabinet talks to the MMS itself; the LM never does (the WAN manager exists only in the PCB root). So one
++server serves cabinets from any number of stores / LMs and home setups at once, all in one pool per mode.
++* **Same cabinet = same `pcb_serial` + same STUN global IP** (was: serial only). The POC hook gives every
++  install serial 0001, so terminal 1 of every LM and most home setups share a serial; the old rule dropped them
++  from the queue ("same cabinet entered again"). Fake-cabinet mix test: 3/14 matched before, 14/14 after.
++* **Network realms:** players whose STUN global IP is on different networks (Radmin 26/8, Hamachi 25/8,
++  100.64/10 overlay, private/loopback = `lan`, everything else = `internet`) can't reach each other, so they
++  are never put in one room. Same realm = one pool, whatever store / LM / home. `NetworkRealms: "off"` disables it.
++  The NET log lines show `realm=`.
 +
 +## Known gaps / risks
 +* CheckMatching / CancelMatching are not authenticated: anyone who knows a node id can cancel that entry.
@@ -763,10 +775,10 @@ index f7dce78..a9abd37 100644
          return Task.FromResult(response);
 diff --git a/Server-Infinite/Matchmaking/Matchmaker.cs b/Server-Infinite/Matchmaking/Matchmaker.cs
 new file mode 100644
-index 0000000..7cb616e
+index 0000000..d23154d
 --- /dev/null
 +++ b/Server-Infinite/Matchmaking/Matchmaker.cs
-@@ -0,0 +1,452 @@
+@@ -0,0 +1,460 @@
 +using nue.protocol.mms;
 +
 +namespace ServerInfinite.Matchmaking;
@@ -845,6 +857,8 @@ index 0000000..7cb616e
 +        public Dictionary<uint, double> SeenByNode = new();
 +        /// <summary>HTTP source IP of each node's own EntryMatching (diagnostics only)</summary>
 +        public Dictionary<uint, string> SourceByNode = new();
++        /// <summary>Network realms of the humans ("unknown" ignored); empty = matches any realm.</summary>
++        public HashSet<string> Realms = new();
 +        public uint LeaderNode => Clients[0].NodeId;
 +        public Room? Room;
 +
@@ -912,6 +926,8 @@ index 0000000..7cb616e
 +    /// <summary>First node id issued by this process (0 = unknown). An unknown node below it was issued before a
 +    /// server restart, so its wait was lost: answer MATCH_CANCELED instead of ERR_MATCH_NOENTRY.</summary>
 +    public uint FirstNodeThisRun { get; set; }
++    /// <summary>Network realms (NetDiag.DefaultRealms by default). null = realm matching off: one pool per mode.</summary>
++    public IReadOnlyList<(string Name, string Cidr)>? Realms { get; set; } = NetDiag.DefaultRealms;
 +
 +    public Matchmaker(double fillAfter = 30, bool allowPartial = true, double softWait = 15, int seed = 0)
 +    {
@@ -926,6 +942,8 @@ index 0000000..7cb616e
 +    public ErrorCode Entry(Request.EntryMatching e, double now, string? sourceIp = null)
 +    {
 +        var t = Unit.From(e, now);
++        if (Realms != null)
++            t.Realms = t.Humans.Select(c => NetDiag.Realm(c.GlobalIpaddress, Realms)).Where(r => r != "unknown").ToHashSet();
 +        if (!string.IsNullOrEmpty(sourceIp)) t.SourceByNode[e.Myclient.NodeId] = NetDiag.Norm(sourceIp);
 +        lock (_gate)
 +        {
@@ -967,8 +985,9 @@ index 0000000..7cb616e
 +            foreach (var n in t.NodeIds) _ended.Remove(n);
 +            // load test 2026-11-13: one queue slot per cabinet. A new entry (new node ids) from a cabinet that still
 +            // has an older waiting unit (it left without CancelMatching) used to let both match -> two rooms at once.
-+            var serials = t.Humans.Select(c => c.PcbSerial).Where(s => !string.IsNullOrEmpty(s)).ToHashSet();
-+            foreach (var old in _queue.Where(u => u.Room == null && u.Humans.Any(c => serials.Contains(c.PcbSerial))).ToList())
++            // lm-mix test 2026-11-13: same cabinet = same serial + same global IP (serials repeat across stores).
++            foreach (var old in _queue.Where(u => u.Room == null &&
++                         u.Humans.Any(c2 => t.Humans.Any(c => NetDiag.SameCabinet(c, c2)))).ToList())
 +                Drop(old, now, reason: "same cabinet entered again");
 +            foreach (var n in t.NodeIds) _byNode[n] = t;
 +            _queue.Add(t);
@@ -1031,7 +1050,7 @@ index 0000000..7cb616e
 +    /// <summary>One NET line per entry; a warning once per (source, global) pair when STUN and HTTP disagree.</summary>
 +    private void NetEntry(Client c, string? sourceIp, string what)
 +    {
-+        Log?.Invoke($"NET {what} {NetDiag.Describe(c, sourceIp)}");
++        Log?.Invoke($"NET {what} {NetDiag.Describe(c, sourceIp, Realms)}");
 +        var (cls, mismatch) = NetDiag.Classify(c, sourceIp);
 +        var key = (NetDiag.Norm(sourceIp), NetDiag.Norm(c.GlobalIpaddress));
 +        var warn = Warn ?? Log;
@@ -1052,6 +1071,7 @@ index 0000000..7cb616e
 +        if (a.AmIds.Overlaps(b.AmIds)) return false;                     // same card twice
 +        if (a.BlAm.Overlaps(b.AmIds) || b.BlAm.Overlaps(a.AmIds)) return false;
 +        if (a.BlLoc.Overlaps(b.Locs) || b.BlLoc.Overlaps(a.Locs)) return false;
++        if (a.Realms.Count > 0 && b.Realms.Count > 0 && !a.Realms.Overlaps(b.Realms)) return false;   // can't reach each other
 +        var waited = now - Math.Min(a.Created, b.Created);              // the longer waiter widens the search
 +        if (a.Soft != null && b.Soft != null && a.Soft != b.Soft && waited < SoftWait) return false;
 +        if (a.Ranked)
@@ -1187,7 +1207,7 @@ index 0000000..7cb616e
 +        Log?.Invoke($"MATCH room={room.RoomId} {all[0].WorldName} {Desc(sides.S0)} vs {Desc(sides.S1)} (humans={room.Humans}/4)");
 +        var src = new Dictionary<uint, string>();
 +        foreach (var u in all) foreach (var kv in u.SourceByNode) src[kv.Key] = kv.Value;
-+        Log?.Invoke(NetDiag.MatchLine(room.RoomId, clients.Select(c => (c.GroupId, c.Client)), src));
++        Log?.Invoke(NetDiag.MatchLine(room.RoomId, clients.Select(c => (c.GroupId, c.Client)), src, Realms));
 +    }
 +
 +    /// <summary>Remove a unit. With <paramref name="now"/>, its other human nodes (e.g. the partner of a
@@ -1221,10 +1241,10 @@ index 0000000..7cb616e
 +}
 diff --git a/Server-Infinite/Matchmaking/NetDiag.cs b/Server-Infinite/Matchmaking/NetDiag.cs
 new file mode 100644
-index 0000000..ad1c9c7
+index 0000000..0a0c7ec
 --- /dev/null
 +++ b/Server-Infinite/Matchmaking/NetDiag.cs
-@@ -0,0 +1,65 @@
+@@ -0,0 +1,102 @@
 +using nue.protocol.mms;
 +
 +namespace ServerInfinite.Matchmaking;
@@ -1241,6 +1261,42 @@ index 0000000..ad1c9c7
 +        return s.StartsWith("::ffff:", StringComparison.OrdinalIgnoreCase) ? s[7..] : s;   // IPv4-mapped source
 +    }
 +
++    /// <summary>Default network realms (analysis/lm-and-online.md): cabinets whose STUN global IP is in different
++    /// realms can't reach each other and are never put in one room. Anything not listed = "internet".</summary>
++    public static readonly IReadOnlyList<(string Name, string Cidr)> DefaultRealms = new[]
++    {
++        ("radmin", "26.0.0.0/8"), ("hamachi", "25.0.0.0/8"), ("cgnat-overlay", "100.64.0.0/10"),
++        ("lan", "10.0.0.0/8"), ("lan", "172.16.0.0/12"), ("lan", "192.168.0.0/16"), ("lan", "127.0.0.0/8"),
++    };
++
++    /// <summary>"name=cidr,name=cidr" -> realms; "" = defaults; "off" / "none" = realm matching disabled (null).</summary>
++    public static IReadOnlyList<(string Name, string Cidr)>? ParseRealms(string? spec)
++    {
++        if (string.IsNullOrWhiteSpace(spec)) return DefaultRealms;
++        if (spec.Trim().ToLowerInvariant() is "off" or "none") return null;
++        return spec.Split(',').Select(x => x.Split('=', 2)).Where(x => x.Length == 2)
++            .Select(x => (x[0].Trim(), x[1].Trim())).ToList();
++    }
++
++    /// <summary>"unknown" (no STUN address), the first realm containing the IP, or "internet".</summary>
++    public static string Realm(string? ip, IReadOnlyList<(string Name, string Cidr)>? realms = null)
++    {
++        var s = Norm(ip);
++        if (s is "" or "0.0.0.0" || !System.Net.IPAddress.TryParse(s, out var a)) return "unknown";
++        foreach (var (name, cidr) in realms ?? DefaultRealms)
++            if (System.Net.IPNetwork.TryParse(cidr, out var net) && net.Contains(a)) return name;
++        return "internet";
++    }
++
++    /// <summary>pcb_serial alone is not unique across stores / homes (the POC hook defaults every install to serial
++    /// 0001). Same cabinet = same serial and same STUN global IP; serial only when either has no global IP.</summary>
++    public static bool SameCabinet(Client a, Client b)
++    {
++        if (string.IsNullOrEmpty(a.PcbSerial) || a.PcbSerial != b.PcbSerial) return false;
++        string ga = Norm(a.GlobalIpaddress), gb = Norm(b.GlobalIpaddress);
++        return ga is "" or "0.0.0.0" || gb is "" or "0.0.0.0" || ga == gb;
++    }
++
 +    private static bool IsLoopback(string ip) => ip.StartsWith("127.") || ip is "::1" or "localhost";
 +
 +    /// <summary>Class: "no-nat" (STUN global == adapter local), "nat", "stun-missing". Mismatch: STUN global IP
@@ -1252,12 +1308,13 @@ index 0000000..ad1c9c7
 +        return (cls, src != "" && cls != "stun-missing" && g != src && !IsLoopback(src));
 +    }
 +
-+    public static string Describe(Client c, string? source)
++    public static string Describe(Client c, string? source, IReadOnlyList<(string Name, string Cidr)>? realms = null)
 +    {
 +        var (cls, mismatch) = Classify(c, source);
 +        return $"node={c.NodeId} src={(Norm(source) is var s && s != "" ? s : "-")} " +
 +               $"local={Or(c.LocalIpaddress)}:{c.LocalPort} global={Or(c.GlobalIpaddress)}:{c.GlobalPort} " +
-+               $"nat={(int)c.NatMappingType}/{(int)c.NatFilteringType} class={cls}{(mismatch ? " MISMATCH" : "")}";
++               $"nat={(int)c.NatMappingType}/{(int)c.NatFilteringType} class={cls} realm={Realm(c.GlobalIpaddress, realms)}" +
++               $"{(mismatch ? " MISMATCH" : "")}";
 +    }
 +
 +    /// <summary>What <paramref name="me"/> dials for <paramref name="peer"/> (exe 0x140794590): the peer's local
@@ -1272,10 +1329,10 @@ index 0000000..ad1c9c7
 +
 +    /// <summary>One line per room: every human's addresses and, for each human pair, which path is used.</summary>
 +    public static string MatchLine(uint roomId, IEnumerable<(uint Group, Client Client)> clients,
-+        IReadOnlyDictionary<uint, string> sourceByNode)
++        IReadOnlyDictionary<uint, string> sourceByNode, IReadOnlyList<(string Name, string Cidr)>? realms = null)
 +    {
 +        var hs = clients.Where(x => Matchmaker.Unit.IsHuman(x.Client)).ToList();
-+        var parts = hs.Select(x => $"g{x.Group} {Describe(x.Client, sourceByNode.GetValueOrDefault(x.Client.NodeId))}");
++        var parts = hs.Select(x => $"g{x.Group} {Describe(x.Client, sourceByNode.GetValueOrDefault(x.Client.NodeId), realms)}");
 +        var pairs = new List<string>();
 +        for (var i = 0; i < hs.Count; i++)
 +            for (var j = i + 1; j < hs.Count; j++)
@@ -1456,10 +1513,10 @@ index bf150d5..969bd29 100644
          var options = new JsonSerializerOptions
 diff --git a/Server-Infinite/Models/Config/OnlineMatchingConfigurations.cs b/Server-Infinite/Models/Config/OnlineMatchingConfigurations.cs
 new file mode 100644
-index 0000000..24b42b7
+index 0000000..b343a51
 --- /dev/null
 +++ b/Server-Infinite/Models/Config/OnlineMatchingConfigurations.cs
-@@ -0,0 +1,58 @@
+@@ -0,0 +1,65 @@
 +namespace ServerInfinite.Models.Config;
 +
 +/// <summary>
@@ -1506,6 +1563,13 @@ index 0000000..24b42b7
 +    public int ShuffleSeed { get; set; } = 0;
 +    /// <summary>Also log every CheckMatching result (one line per poll). Address/NAT lines are always logged once per entry/match.</summary>
 +    public bool VerboseLog { get; set; } = false;
++    /// <summary>
++    /// Network realms, "name=cidr,name=cidr". Players whose STUN global IP falls in different realms can't reach each
++    /// other and are never matched together; everyone else (any store / LM / home) shares one pool per mode.
++    /// "" = defaults (radmin 26/8, hamachi 25/8, cgnat-overlay 100.64/10, lan = private + loopback, rest = internet);
++    /// "off" = no realm check.
++    /// </summary>
++    public string NetworkRealms { get; set; } = "";
 +
 +    /// <summary>
 +    /// LoadClassMatch schedule rows. IB appears to compare schedule start/end against the local HOUR
@@ -1519,7 +1583,7 @@ index 0000000..24b42b7
 +    public bool PersistClassMatchResult { get; set; } = true;
 +}
 diff --git a/Server-Infinite/Program.cs b/Server-Infinite/Program.cs
-index 1745d32..f88123b 100644
+index 1745d32..bb32a0e 100644
 --- a/Server-Infinite/Program.cs
 +++ b/Server-Infinite/Program.cs
 @@ -28,7 +28,9 @@ var failed = false;
@@ -1543,7 +1607,7 @@ index 1745d32..f88123b 100644
  
      builder.Services.AddOptions<CardServerConfig>()
          .Bind(builder.Configuration.GetSection(CardServerConfig.CARD_SERVER_SECTION))
-@@ -67,6 +71,28 @@ try
+@@ -67,6 +71,29 @@ try
      builder.Services.AddSingleton<ServerInfinite.Processor.Tracker.ITrackerCatalog>(sp =>
          new ServerInfinite.Processor.Tracker.TrackerCatalog(sp.GetRequiredService<IWebHostEnvironment>().WebRootFileProvider));
      builder.Services.AddMemoryCache();
@@ -1565,6 +1629,7 @@ index 1745d32..f88123b 100644
 +            Log = message => logger.LogInformation("{Message}", message),
 +            Warn = message => logger.LogWarning("{Message}", message),
 +            Verbose = mm.VerboseLog,
++            Realms = ServerInfinite.Matchmaking.NetDiag.ParseRealms(mm.NetworkRealms),
 +            StaleAfter = Math.Max(3 * Math.Max(1u, mm.PollingIntervalSeconds), mm.StaleAfterSeconds),
 +            FirstNodeThisRun = (alloc as ServerInfinite.Matchmaking.FileNodeIdAllocator)?.FirstThisRun ?? 0
 +        };
@@ -1596,10 +1661,10 @@ index 519b7c9..2206c64 100644
      <Compile Remove="Services\**" />
 diff --git a/Tests/Matchmaking.Tests/MatchmakerTests.cs b/Tests/Matchmaking.Tests/MatchmakerTests.cs
 new file mode 100644
-index 0000000..1ab81dd
+index 0000000..0259904
 --- /dev/null
 +++ b/Tests/Matchmaking.Tests/MatchmakerTests.cs
-@@ -0,0 +1,455 @@
+@@ -0,0 +1,528 @@
 +using nue.protocol.mms;
 +using ServerInfinite.Matchmaking;
 +using Xunit;
@@ -2053,6 +2118,79 @@ index 0000000..1ab81dd
 +        mm.Verbose = true;
 +        mm.Check(101, 1);
 +        Assert.Contains(logs, l => l.StartsWith("check node=101"));
++    }
++
++    // ---- one universal server: LM-store players, standalone players, many LMs (analysis/lm-and-online.md) ----
++
++    private Request.EntryMatching At(string serial, string loc, string global, string local, string sortie = "S",
++        string? partnerSerial = null, string? partnerLocal = null)
++    {
++        var e = Entry(23, sortie);
++        e.Myclient.PcbSerial = serial; e.Myclient.LocId = loc; e.Myclient.GlobalIpaddress = global; e.Myclient.LocalIpaddress = local;
++        if (partnerSerial != null)
++        {
++            var p = e.Groups[0].Client;
++            p.PcbSerial = partnerSerial; p.LocId = loc; p.GlobalIpaddress = global; p.LocalIpaddress = partnerLocal ?? local;
++        }
++        return e;
++    }
++
++    [Fact]
++    public void RealmsAndSameCabinet()
++    {
++        Assert.Equal("radmin", NetDiag.Realm("26.1.2.3"));
++        Assert.Equal("cgnat-overlay", NetDiag.Realm("100.100.1.1"));
++        Assert.Equal("lan", NetDiag.Realm("192.168.1.5"));
++        Assert.Equal("internet", NetDiag.Realm("203.0.113.5"));
++        Assert.Equal("unknown", NetDiag.Realm("0.0.0.0"));
++        Assert.Null(NetDiag.ParseRealms("off"));
++        Assert.Equal("vpn", NetDiag.Realm("10.8.0.2", NetDiag.ParseRealms("vpn=10.8.0.0/16")));
++        Client A(string g) { var c = Cl(1); c.PcbSerial = "S0001"; c.GlobalIpaddress = g; return c; }
++        Assert.True(NetDiag.SameCabinet(A("203.0.113.10"), A("203.0.113.10")));
++        Assert.False(NetDiag.SameCabinet(A("203.0.113.10"), A("198.51.100.20")));    // same serial, other store
++        Assert.True(NetDiag.SameCabinet(A("203.0.113.10"), A("")));                  // no STUN: serial only
++    }
++
++    [Fact]
++    public void DefaultSerialAtEveryHomeStillMatches()
++    {
++        var mm = New();
++        for (var i = 1; i <= 4; i++)
++            Assert.Equal(ErrorCode.Success, mm.Entry(At("S0001", "JPN1", $"198.51.100.{i}", "192.168.1.10"), 0));
++        Assert.Equal(0, mm.QueueLength);                                         // one full room, nobody dropped
++    }
++
++    [Fact]
++    public void StorePairPlusPlayersFromTwoOtherLms()
++    {
++        var mm = New();
++        var pair = At("S0001", "STOREA", "203.0.113.10", "192.168.10.1", "T", "S0002", "192.168.10.2");
++        mm.Entry(pair, 0);
++        mm.Entry(At("S0001", "STOREB", "198.51.100.20", "192.168.20.1"), 0);
++        mm.Entry(At("S0001", "STOREC", "198.51.100.30", "192.168.30.1"), 0);
++        var room = mm.Check(pair.Myclient.NodeId, 1).Room!;
++        Assert.Equal(4, room.Clients.Count);
++        var g = room.Clients.First(c => c.Client.NodeId == pair.Myclient.NodeId).GroupId;
++        Assert.Equal(g, room.Clients.First(c => c.Client.NodeId == pair.Groups[0].Client.NodeId).GroupId);
++    }
++
++    [Fact]
++    public void OverlayAndInternetPlayersNeverShareARoom()
++    {
++        var mm = New();
++        var es = new List<Request.EntryMatching>();
++        for (var i = 0; i < 2; i++) es.Add(At($"R{i}", "L", $"26.0.0.{5 + i}", $"26.0.0.{5 + i}"));
++        for (var i = 0; i < 2; i++) es.Add(At($"I{i}", "L", $"198.51.100.{5 + i}", $"192.168.1.{i}"));
++        es.ForEach(e => mm.Entry(e, 0));
++        Assert.Equal(4, mm.QueueLength);                                         // no cross-realm 2v2
++        var r0 = mm.Check(es[0].Myclient.NodeId, 31).Room!;                      // fill timer: 1v1 per realm
++        var r2 = mm.Check(es[2].Myclient.NodeId, 31).Room!;
++        Assert.Equal(es[1].Myclient.NodeId, r0.Clients.Single(c => c.Client.NodeId != es[0].Myclient.NodeId).Client.NodeId);
++        Assert.Equal(es[3].Myclient.NodeId, r2.Clients.Single(c => c.Client.NodeId != es[2].Myclient.NodeId).Client.NodeId);
++
++        var off = New(); off.Realms = null;                                      // realm matching off: one pool
++        foreach (var e in es) { e.Myclient.NodeId += 1000; off.Entry(e, 0); }
++        Assert.Equal(0, off.QueueLength);
 +    }
 +}
 diff --git a/Tests/Matchmaking.Tests/Matchmaking.Tests.csproj b/Tests/Matchmaking.Tests/Matchmaking.Tests.csproj

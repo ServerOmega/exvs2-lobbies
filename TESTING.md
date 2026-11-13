@@ -15,6 +15,12 @@ Everything here is **untested in the real game**. Tick items off as they're veri
 - [ ] Real game: what the cabinet does on MATCH_CANCELED vs ERR_MATCH_NOENTRY, and when a room member drops right after matching
 - [ ] EntryMatching + CheckMatching polling reaches the matchmaker (built-in `/match` or `mms_server.py`; capture with tcpdump)
 - [ ] A matched room actually starts a battle; capture the cabinet-to-cabinet (hole-punch / P2P) packet format. Keep the `MATCH-NET` line for that room (which address each pair dialled)
+- [x] Box: one server for LM-store, home and multi-LM players (`server-sketch/loadtest/lm_mix.py`, 14 fake players): 14/14 matched on both servers after the serial+IP fix (3/14 before). Fake cabinets only ([analysis/lm-and-online.md](analysis/lm-and-online.md) §4)
+- [ ] Real game, LM store: with `battleMode: 0`, does an LM-attached cabinet go online, and does its in-store partner show up in `groups` (team sortie)? Keep both cabinets' `NET entry` lines
+- [ ] Real game: loc_id and pcb_serial sent by two different POC installs (same `JPN1`/`0001`?). Look in the IssueNodeId / entry log
+- [ ] Real game: two players on different networks with the default serial both match (no "same cabinet entered again" in the log)
+- [ ] Real game: store pair vs online players: MATCH-NET shows `local same-NAT` for the pair and the battle starts
+- [ ] Real game: in-store match (worlds 15/16) from two different installs: matched together or not?
 - [x] Box: IP/NAT log lines on both servers (`NET`, `NET-WARN`, `MATCH-NET`, drop reasons). Unit tests plus a smoke run with fake cabinets and documentation IPs
 - [ ] Play modes 1–6 land in separate queues; `battleMode` values other than 0 still use the LM path
 

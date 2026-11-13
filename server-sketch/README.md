@@ -30,6 +30,8 @@ Notes from RE 2026-11-13 (see `../analysis/matchmaking.md` §7):
 [`loadtest/loadtest.py`](loadtest/loadtest.py) simulates 100–500 cabinets (solo shuffle, pairs, CPU partners, ranked
 classes, cancels, drop-outs, requeues, misbehaving clients) against either matchmaker and checks room invariants.
 Results and the bugs it found: [`../analysis/load-test.md`](../analysis/load-test.md).
+[`loadtest/lm_mix.py`](loadtest/lm_mix.py) puts LM-store, home and multi-LM fake players on one server and
+prints who got matched with whom ([`../analysis/lm-and-online.md`](../analysis/lm-and-online.md)).
 
 ## Card server (step 3)
 See [`ib-server/`](ib-server/README.md): a patch for Chiang-17/EXVS2-IB-Server that advertises the match + STUN servers and runs a C# port of this matchmaker in-process. The Python server here remains usable as an external matchmaker (`MatchUrl`).

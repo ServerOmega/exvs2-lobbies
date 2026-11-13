@@ -28,7 +28,7 @@ git am /path/to/exvs2-matchmaking/server-sketch/ib-server/online-matchmaking.pat
 dotnet publish Server-Infinite -c Release -r win-x64
 # or Linux server:
 dotnet build Server-Infinite -c Release -p:LinuxHost=true -o out
-# matchmaker unit tests (29 tests):
+# matchmaker unit tests (33 tests):
 dotnet test Tests/Matchmaking.Tests
 ```
 Copy your existing `ServerInfinite.db` next to the new build if you want to keep cards; the new migration
@@ -50,6 +50,7 @@ In `Configurations/server.json` under `CardServerConfig` → `OnlineMatching`:
 | `NodeIdStateFile` / `FirstNodeId` | `mms_nodeids.json` / `1000` | node ids are never reused |
 | `ClassMatchScheduleMode` | `Both` | `Both` / `Hours` / `UnixTime` (upstream) schedule rows in LoadClassMatch |
 | `PersistClassMatchResult` | `true` | store ranked results from SaveVsmOnResult |
+| `NetworkRealms` | `""` | players in different network realms (Radmin 26/8, Hamachi 25/8, 100.64/10, private = lan, rest = internet) are never matched together; `"off"` or `"name=cidr,..."` ([lm-and-online.md](../../analysis/lm-and-online.md)) |
 | `VerboseLog` | `false` | also log every CheckMatching poll (address/NAT lines are always logged once per entry / match) |
 
 Environment variables work too and win over `server.json`: `CardServerConfig__OnlineMatching__Enabled=true`.

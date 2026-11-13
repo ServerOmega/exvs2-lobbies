@@ -2,7 +2,7 @@
 """Deterministic tests for the casual/shuffle matcher in mms_server.py (no network, injected clock).
 Run: python3 test_casual.py      EXPERIMENTAL: shapes follow static analysis, untested in game."""
 import unittest
-from mms_server import (net_class, net_desc, dial_addr, match_net_line, Matchmaker, RatingStore, SUCCESS, MATCH_CANCELED, NPC_SERIAL, ERR_MATCH_NOENTRY,
+from mms_server import (realm_of, parse_realms, same_cabinet, net_class, net_desc, dial_addr, match_net_line, Matchmaker, RatingStore, SUCCESS, MATCH_CANCELED, NPC_SERIAL, ERR_MATCH_NOENTRY,
                         ERR_DUPLICATE_ENTRY, ERR_NODEID)
 
 _n = [100]
@@ -290,6 +290,69 @@ class NetDiagnostics(unittest.TestCase):
         self.assertEqual(len(line), 1)
         self.assertEqual(line[0].count('same-NAT'), 2)                     # the two pairs sharing a public IP
         self.assertNotIn('NET-WARN', ' '.join(cm.output))
+
+class UniversalLmAndOnline(unittest.TestCase):
+    """One server for LM-store players, standalone players and many LMs (analysis/lm-and-online.md)."""
+    def setUp(self):
+        self.mm = Matchmaker(RatingStore(), fill_after=30, partial=True, seed=1, stale_after=1e6)
+
+    def e(self, serial, loc, g, l, sortie='S', partner=None, world=23):
+        x = entry(world, sortie, loc=loc)
+        x['myclient'].update(pcb_serial=serial, global_ipaddress=g, local_ipaddress=l, local_port=48001)
+        if partner:
+            x['groups'][0]['client'].update(pcb_serial=partner[0], global_ipaddress=g, local_ipaddress=partner[1])
+        return x
+
+    def test_realms(self):
+        self.assertEqual(realm_of('26.1.2.3'), 'radmin')
+        self.assertEqual(realm_of('100.100.1.1'), 'cgnat-overlay')
+        self.assertEqual(realm_of('192.168.1.5'), 'lan')
+        self.assertEqual(realm_of('203.0.113.5'), 'internet')
+        self.assertEqual(realm_of(''), 'unknown'); self.assertEqual(realm_of('0.0.0.0'), 'unknown')
+        self.assertIsNone(parse_realms('off'))
+        self.assertEqual(realm_of('10.8.0.2', parse_realms('vpn=10.8.0.0/16')), 'vpn')
+
+    def test_same_serial_at_different_stores_is_not_the_same_cabinet(self):
+        a = {'pcb_serial': 'S0001', 'global_ipaddress': '203.0.113.10'}
+        self.assertTrue(same_cabinet(a, dict(a)))
+        self.assertFalse(same_cabinet(a, dict(a, global_ipaddress='198.51.100.20')))
+        self.assertTrue(same_cabinet(a, dict(a, global_ipaddress='')))          # no STUN: serial only (as before)
+        self.assertFalse(same_cabinet(a, dict(a, pcb_serial='S0002')))
+
+    def test_default_serial_everywhere_still_matches(self):
+        # 4 home players, all with the POC default serial: used to drop each other ("same cabinet entered again")
+        ids = [self.mm.entry(self.e('S0001', 'JPN1', '198.51.100.%d' % i, '192.168.1.10'), 0) for i in range(1, 5)]
+        self.assertEqual(ids, [SUCCESS] * 4)
+        self.assertEqual(len(self.mm.rooms), 1)
+        self.assertEqual(self.mm.rooms[1]['humans'], 4)
+
+    def test_store_pair_plus_two_other_lms(self):
+        pair = self.e('S0001', 'STOREA', '203.0.113.10', '192.168.10.1', 'T', ('S0002', '192.168.10.2'))
+        b = self.e('S0001', 'STOREB', '198.51.100.20', '192.168.20.1')
+        c = self.e('S0001', 'STOREC', '198.51.100.30', '192.168.30.1')
+        for x in (pair, b, c): self.assertEqual(self.mm.entry(x, 0), SUCCESS)
+        code, r = self.mm.check(pair['myclient']['node_id'], 1)
+        self.assertEqual(code, SUCCESS); self.assertIsNotNone(r)
+        g = {}
+        for x in r['clients']: g.setdefault(x['group_id'], set()).add(x['client']['pcb_serial'] + '@' + x['client']['global_ipaddress'])
+        self.assertIn({'S0001@203.0.113.10', 'S0002@203.0.113.10'}, g.values())  # store pair stays together
+
+    def test_overlay_and_internet_players_never_share_a_room(self):
+        for i in range(2): self.mm.entry(self.e('R%d' % i, 'L', '26.0.0.%d' % (5 + i), '26.0.0.%d' % (5 + i)), 0)
+        for i in range(2): self.mm.entry(self.e('I%d' % i, 'L', '198.51.100.%d' % (5 + i), '192.168.1.%d' % i), 0)
+        self.assertEqual(len(self.mm.rooms), 0)                                  # 2+2 across realms: no 2v2
+        self.mm.check(self.mm.queue[0].leader, 31)                               # fill timer: 1v1 per realm
+        self.assertEqual(len(self.mm.rooms), 2)
+        for r in self.mm.queue: self.fail('left in queue')
+
+    def test_realms_off_is_one_pool(self):
+        mm = Matchmaker(RatingStore(), seed=1, stale_after=1e6, realms=None)
+        for i in range(2): mm.entry(self.e('R%d' % i, 'L', '26.0.0.%d' % (5 + i), '26.0.0.%d' % (5 + i)), 0)
+        for i in range(2): mm.entry(self.e('I%d' % i, 'L', '198.51.100.%d' % (5 + i), '192.168.1.%d' % i), 0)
+        self.assertEqual(len(mm.rooms), 1)
+
+    def test_net_line_shows_realm(self):
+        self.assertIn('realm=radmin', net_desc({'node_id': 1, 'global_ipaddress': '26.1.1.1'}))
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)

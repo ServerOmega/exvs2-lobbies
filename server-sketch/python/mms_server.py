@@ -25,7 +25,7 @@ Protocol facts this follows (see analysis/matchmaking.md, analysis/ranked-matchi
     The MMS protocol carries no rate/grade/name: opponents' class/grade are exchanged P2P, and the new
     rate is computed by the client and uploaded to the CARD server (SaveVsmOnResult.class_match_result).
 """
-import argparse, json, logging, os, threading, time
+import argparse, ipaddress, json, logging, os, threading, time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pbwire import encode, decode
 
@@ -141,12 +141,13 @@ def net_class(c, source=None):
     mismatch = bool(src and cls != 'stun-missing' and g != src and not _is_loopback(src))
     return cls, mismatch
 
-def net_desc(c, source=None):
+def net_desc(c, source=None, realms=None):
     cls, mism = net_class(c, source)
-    return 'node=%s src=%s local=%s:%s global=%s:%s nat=%s/%s class=%s%s' % (
+    return 'node=%s src=%s local=%s:%s global=%s:%s nat=%s/%s class=%s realm=%s%s' % (
         c.get('node_id'), _norm_ip(source) or '-', c.get('local_ipaddress') or '-', c.get('local_port', 0),
         c.get('global_ipaddress') or '-', c.get('global_port', 0), c.get('nat_mapping_type', '-'),
-        c.get('nat_filtering_type', '-'), cls, ' MISMATCH' if mism else '')
+        c.get('nat_filtering_type', '-'), cls, realm_of(c.get('global_ipaddress'), realms or DEFAULT_REALMS),
+        ' MISMATCH' if mism else '')
 
 def dial_addr(me, peer):
     """What `me` dials for `peer` (exe 0x140794590): peer's local ip:port when both STUN global IPs are equal."""
@@ -154,10 +155,10 @@ def dial_addr(me, peer):
         return 'local', '%s:%s' % (peer.get('local_ipaddress') or '-', peer.get('local_port', 0))
     return 'global', '%s:%s' % (peer.get('global_ipaddress') or '-', peer.get('global_port', 0))
 
-def match_net_line(room_id, clients, src):
+def match_net_line(room_id, clients, src, realms=None):
     """One line per room: each human's addresses + for every human pair which path is used."""
     hs = [(x['group_id'], x['client']) for x in clients if is_human(x['client'])]
-    parts = ['g%d %s' % (g, net_desc(c, src.get(c['node_id']))) for g, c in hs]
+    parts = ['g%d %s' % (g, net_desc(c, src.get(c['node_id']), realms)) for g, c in hs]
     pairs = []
     for i in range(len(hs)):
         for j in range(i + 1, len(hs)):
@@ -166,6 +167,41 @@ def match_net_line(room_id, clients, src):
             pairs.append('%s<->%s %s%s (%s / %s)' % (a['node_id'], b['node_id'], how,
                                                       ' same-NAT' if how == 'local' else '', ab, ba))
     return 'MATCH-NET room=%d | %s | pairs: %s' % (room_id, ' ; '.join(parts), ' ; '.join(pairs) or '-')
+
+
+# ---- one universal server for LM and non-LM players (analysis/lm-and-online.md) ---------------------------
+# Network realm of a cabinet = which network its STUN global address lives on. Cabinets in different realms
+# can't reach each other (e.g. a Radmin player whose STUN went over the overlay vs an internet player), so
+# they are never put in one room. Same realm = normal matching, whatever store / LM / home they play from.
+DEFAULT_REALMS = [('radmin', '26.0.0.0/8'), ('hamachi', '25.0.0.0/8'), ('cgnat-overlay', '100.64.0.0/10'),
+                  ('lan', '10.0.0.0/8'), ('lan', '172.16.0.0/12'), ('lan', '192.168.0.0/16'), ('lan', '127.0.0.0/8')]
+
+def parse_realms(spec):
+    """'name=cidr,name=cidr' -> list; '' / 'off' -> None (realm matching disabled)."""
+    if spec is None: return DEFAULT_REALMS
+    if spec.strip().lower() in ('', 'off', 'none'): return None
+    return [(k.strip(), v.strip()) for k, v in (x.split('=', 1) for x in spec.split(',') if '=' in x)]
+
+def realm_of(ip, realms=DEFAULT_REALMS):
+    """'unknown' (no STUN address) / first matching realm name / 'internet'."""
+    ip = _norm_ip(ip)
+    if not ip or ip == '0.0.0.0': return 'unknown'
+    try: a = ipaddress.ip_address(ip)
+    except ValueError: return 'unknown'
+    for name, cidr in realms or []:
+        try:
+            if a in ipaddress.ip_network(cidr, strict=False): return name
+        except ValueError: continue
+    return 'internet'
+
+def same_cabinet(a, b):
+    """pcb_serial alone is NOT unique across stores / homes: the POC hook defaults every install to serial
+    0001 (-> same pcb_serial), so terminal 1 of every LM looks alike. Same cabinet = same serial AND same
+    STUN global IP (one store / one home); falls back to the serial when either side has no global IP."""
+    if not a.get('pcb_serial') or a.get('pcb_serial') != b.get('pcb_serial'): return False
+    ga, gb = _norm_ip(a.get('global_ipaddress')), _norm_ip(b.get('global_ipaddress'))
+    if ga in ('', '0.0.0.0') or gb in ('', '0.0.0.0'): return True
+    return ga == gb
 
 
 def is_human(c):
@@ -210,6 +246,12 @@ class Unit:
         self.seen_by_node = {}         # last CheckMatching per human node (only nodes that polled at least once)
         self.mmr = ratings.team(self.am_ids()) if ratings else 1500.0
         self.room = None
+        self.set_realms(DEFAULT_REALMS)
+
+    def set_realms(self, realms):
+        """Realms of this unit's humans ('unknown' ignored); empty set = matches any realm."""
+        self.realms = {realm_of(c.get('global_ipaddress'), realms) for c in self.humans()} - {'unknown'} \
+            if realms else set()
 
     def humans(self):
         return [c for c in self.clients if is_human(c)]
@@ -230,6 +272,7 @@ class Unit:
         if self.am_ids() & other.am_ids(): return False              # same card twice
         if self.bl_am & other.am_ids() or other.bl_am & self.am_ids(): return False
         if self.bl_loc & other.locs() or other.bl_loc & self.locs(): return False
+        if self.realms and other.realms and not (self.realms & other.realms): return False  # can't reach each other
         if (self.soft is not None and other.soft is not None and self.soft != other.soft
                 and (now is None or now - min(self.created, other.created) < SOFT_WAIT)):
             return False                                              # prefer like-for-like, then mix
@@ -263,9 +306,11 @@ class Matchmaker:
        After FILL_AFTER seconds the oldest waiter may get a short-handed room (>= 2 humans, e.g. 1v1, 2v1);
        empty seats are expected to be CPU-controlled by the cabinets [L - open question for a live test].
        group_id is decided by the server: the client only derives "same team as the first listed client"."""
-    def __init__(self, ratings=None, fill_after=FILL_AFTER, partial=True, seed=None, stale_after=STALE_AFTER):
+    def __init__(self, ratings=None, fill_after=FILL_AFTER, partial=True, seed=None, stale_after=STALE_AFTER,
+                 realms=DEFAULT_REALMS):
         import random
         self.lock = threading.Lock()
+        self.realms = realms           # None = realm matching off (everyone in one pool per mode)
         self.stale_after = stale_after
         self.ended = {}        # node_id -> time its unit was dropped by the server (-> MATCH_CANCELED once)
         self.first_node_this_run = 0   # unknown node below this was issued before a restart -> MATCH_CANCELED
@@ -281,6 +326,7 @@ class Matchmaker:
 
     def entry(self, e, now, source=None):
         t = Unit(e, now, self.ratings)
+        t.set_realms(self.realms)
         t.src = {t.leader: _norm_ip(source)} if source else {}
         if not e['myclient'].get('node_id'):
             return ERR_NODEID                                         # never issued by IssueNodeId
@@ -320,8 +366,9 @@ class Matchmaker:
             for n in t.node_ids(): self.ended.pop(n, None)
             # load test 2026-11-13: one queue slot per cabinet; an older waiting unit of the same cabinet (left
             # without CancelMatching, then re-entered with new node ids) used to match too -> two rooms at once.
-            serials = {c.get('pcb_serial') for c in t.humans() if c.get('pcb_serial')}
-            for old in [u for u in self.queue if u.room is None and any(c.get('pcb_serial') in serials for c in u.humans())]:
+            # lm-mix test 2026-11-13: same cabinet = same serial + same global IP (serials repeat across stores).
+            for old in [u for u in self.queue if u.room is None and
+                        any(same_cabinet(c, c2) for c in t.humans() for c2 in u.humans())]:
                 self._drop(old, now, reason='same cabinet entered again')
             for n in t.node_ids(): self.by_node[n] = t
             self.queue.append(t)
@@ -335,7 +382,7 @@ class Matchmaker:
 
     def _net_entry(self, c, source, what):
         """One NET line per entry; a warning once per (source, global) pair when STUN and HTTP disagree."""
-        log.info('NET %s %s', what, net_desc(c, source))
+        log.info('NET %s %s', what, net_desc(c, source, self.realms))
         cls, mism = net_class(c, source)
         key = (_norm_ip(source), _norm_ip(c.get('global_ipaddress')))
         if mism and key not in self.warned:
@@ -452,7 +499,7 @@ class Matchmaker:
         src = {}
         for s in sides:
             for u in s: src.update(getattr(u, 'src', {}))
-        log.info('%s', match_net_line(room_id, clients, src))
+        log.info('%s', match_net_line(room_id, clients, src, self.realms))
 
     def _drop(self, t, now=None, except_node=None, reason=None):
         if reason: log.info('drop nodes=%s reason=%s', sorted(t.node_ids()), reason)
@@ -571,11 +618,15 @@ def main():
     ap.add_argument('--no-partial', action='store_true', help='only ever form full 4-human-slot rooms')
     ap.add_argument('--stale-after', type=float, default=STALE_AFTER,
                     help='seconds without CheckMatching before a waiting cabinet is dropped')
+    ap.add_argument('--realms', default=None,
+                    help="network realms 'name=cidr,...' (default: radmin 26/8, hamachi 25/8, 100.64/10, private "
+                         "ranges = lan, rest = internet); 'off' = one pool regardless of network")
     ap.add_argument('-v', action='store_true')
     a = ap.parse_args()
     logging.basicConfig(level=logging.DEBUG if a.v else logging.INFO, format='%(asctime)s %(name)s %(message)s')
     nodes = NodeIdAllocator(a.state)
-    mm = Matchmaker(RatingStore(a.ratings), a.fill_after, not a.no_partial, stale_after=max(a.stale_after, 3 * POLL_INTERVAL))
+    mm = Matchmaker(RatingStore(a.ratings), a.fill_after, not a.no_partial, stale_after=max(a.stale_after, 3 * POLL_INTERVAL),
+                    realms=parse_realms(a.realms))
     mm.first_node_this_run = nodes.first_this_run
     mm.verbose = a.v                   # -v: also log every CheckMatching result
     mms = Mms(nodes, mm)
