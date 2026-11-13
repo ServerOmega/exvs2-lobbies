@@ -1,4 +1,4 @@
-From d2204382e2ddcb5ce6223289ec443ff3a0c39b36 Mon Sep 17 00:00:00 2001
+From d7c73e9462770a1c8aa0ab1606e06d710e4a023b Mon Sep 17 00:00:00 2001
 From: ServerOmega <69215510+ServerOmega@users.noreply.github.com>
 Date: Fri, 13 Nov 2026 07:32:41 -0800
 Subject: [PATCH] Online matchmaking (experimental): STUN+MMS in RegisterPcb,
@@ -6,32 +6,34 @@ Subject: [PATCH] Online matchmaking (experimental): STUN+MMS in RegisterPcb,
  persistence, Linux build option; load-test fixes
 
 ---
- ONLINE_MATCHMAKING.md                         |  77 ++++
+ ONLINE_MATCHMAKING.md                         |  95 ++++
  .../LoadPlayer/SoloClassInformationCommand.cs |   2 +
  .../LoadPlayer/TeamClassInformationCommand.cs |   2 +
  Server-Infinite/Configurations/server.json    |  17 +
  .../Controllers/MatchController.cs            |   9 +-
- .../Game/LoadClassMatchCommandHandler.cs      | 107 ++++-
+ .../Game/LoadClassMatchCommandHandler.cs      | 107 +++-
  .../Online/SaveVsmOnResultCommandHandler.cs   |  72 +++
- .../Game/RegisterPcbCommandHandler.cs         |  51 +++
+ .../Game/RegisterPcbCommandHandler.cs         |  76 ++-
  .../Match/MatchIssueNodeIdCommandHandler.cs   |  42 +-
- .../Match/MatchingQueueCommandHandlers.cs     | 106 +++++
+ .../Match/MatchingQueueCommandHandlers.cs     | 111 +++++
  .../Match/MatchingSettingCommandHandler.cs    |   3 +-
- Server-Infinite/Matchmaking/Matchmaker.cs     | 415 ++++++++++++++++++
+ Server-Infinite/Matchmaking/Matchmaker.cs     | 452 +++++++++++++++++
+ Server-Infinite/Matchmaking/NetDiag.cs        |  65 +++
  .../Matchmaking/NodeIdAllocator.cs            |  61 +++
  .../20261113000000_AddClassMatchGrade.cs      |  37 ++
  .../ServerDbContextModelSnapshot.cs           |   6 +
  .../Cards/Battle/BaseClassMatchRecord.cs      |   5 +
  .../Models/Config/CardServerConfig.cs         |   3 +
- .../Config/OnlineMatchingConfigurations.cs    |  56 +++
- Server-Infinite/Program.cs                    |  22 +
+ .../Config/OnlineMatchingConfigurations.cs    |  58 +++
+ Server-Infinite/Program.cs                    |  28 +-
  Server-Infinite/Server-Infinite.csproj        |  11 +
- Tests/Matchmaking.Tests/MatchmakerTests.cs    | 385 ++++++++++++++++
+ Tests/Matchmaking.Tests/MatchmakerTests.cs    | 455 ++++++++++++++++++
  .../Matchmaking.Tests.csproj                  |  19 +
- 22 files changed, 1464 insertions(+), 44 deletions(-)
+ 23 files changed, 1690 insertions(+), 46 deletions(-)
  create mode 100644 ONLINE_MATCHMAKING.md
  create mode 100644 Server-Infinite/Handlers/Match/MatchingQueueCommandHandlers.cs
  create mode 100644 Server-Infinite/Matchmaking/Matchmaker.cs
+ create mode 100644 Server-Infinite/Matchmaking/NetDiag.cs
  create mode 100644 Server-Infinite/Matchmaking/NodeIdAllocator.cs
  create mode 100644 Server-Infinite/Migrations/20261113000000_AddClassMatchGrade.cs
  create mode 100644 Server-Infinite/Models/Config/OnlineMatchingConfigurations.cs
@@ -40,10 +42,10 @@ Subject: [PATCH] Online matchmaking (experimental): STUN+MMS in RegisterPcb,
 
 diff --git a/ONLINE_MATCHMAKING.md b/ONLINE_MATCHMAKING.md
 new file mode 100644
-index 0000000..d3ec6c9
+index 0000000..e9deca1
 --- /dev/null
 +++ b/ONLINE_MATCHMAKING.md
-@@ -0,0 +1,77 @@
+@@ -0,0 +1,95 @@
 +# Online matchmaking patch (exvs2-lobbies) — EXPERIMENTAL, NOT WORKING IN-GAME YET
 +
 +> ⚠️ This branch has **never been tested with the real game**. Everything is based on static analysis of the
@@ -83,10 +85,12 @@ index 0000000..d3ec6c9
 +  "PollingIntervalSeconds": 3,
 +  "FillAfterSeconds": 30, "AllowPartialRooms": true,
 +  "StaleAfterSeconds": 20,     // drop a waiting cabinet that stopped polling (min 3 x poll interval)
-+  "ClassMatchScheduleMode": "Both"   // Both | Hours | UnixTime
++  "ClassMatchScheduleMode": "Both",  // Both | Hours | UnixTime
++  "VerboseLog": false          // true = also one line per CheckMatching poll (debugging only)
 +}
 +```
-+Environment overrides also work, e.g. `CardServerConfig__OnlineMatching__Enabled=true`.
++Environment overrides also work, e.g. `CardServerConfig__OnlineMatching__Enabled=true` (env vars are
++re-added after the json files, so they win; before 2026-11-13 the json value silently won).
 +Cabinet side: `battleMode: 0` in the active `testmode_pcb.json` entry (online path instead of the LM).
 +
 +## Load-test fixes (2026-11-13, exvs2-lobbies `server-sketch/loadtest`)
@@ -110,6 +114,22 @@ index 0000000..d3ec6c9
 +* A late CancelMatching from the leader for an older `apply_id` no longer cancels its current entry.
 +* A retried poll after the matching timeout gets `MATCH_CANCELED` again (was `ERR_MATCH_NOENTRY`).
 +* After a restart, a poll for a node id issued before the restart gets `MATCH_CANCELED` (was `ERR_MATCH_NOENTRY`).
++
++## Network diagnostics log (2026-11-13)
++Address/NAT lines, so a "never matches" or "matches but can't connect" report can be read from `server.log`.
++Card data (ChipId / AccessCode / BootToken) and `pcb_serial` are never logged. One line per event, not per poll.
++* `NET register-pcb src=<request ip> -> match=<url> stun=<host>:<port>`; `NET-WARN register-pcb` when a remote
++  cabinet is handed a loopback MatchUrl/StunHost.
++* `NET entry node=N src=<request ip> local=<ip:port> global=<STUN ip:port> nat=<mapping>/<filtering> class=<c> [MISMATCH]`
++  (also `NET merge` for a pair partner). `class`: `no-nat` (local = global), `nat`, `stun-missing` (no global
++  address: STUN failed). `MISMATCH` = STUN global ip differs from the request source (ignored for loopback sources).
++* `NET-WARN node=N STUN global X != request source Y ...` once per (source, global) pair; or once for `stun-missing`.
++* `MATCH-NET room=R | <one NET description per cabinet> | pairs: a<->b local same-NAT (addr / addr) ; a<->c global (...)`:
++  the address each side will dial, using the exe rule (equal global ips -> dial the peer's local ip:port).
++* `drop nodes=[..] reason=...` (replaced by re-entry / same cabinet entered again / matching timeout /
++  cancelled by node N / stopped polling (stale)).
++* `VerboseLog: true` adds `check node=N -> <code> room=R` per poll.
++Request source is the TCP peer (`RemoteIpAddress`, IPv4-mapped shown as IPv4); proxy headers are not trusted.
 +
 +## Known gaps / risks
 +* CheckMatching / CancelMatching are not authenticated: anyone who knows a node id can cancel that entry.
@@ -447,10 +467,28 @@ index 95a1404..5aedd51 100644
 +    }
  }
 diff --git a/Server-Infinite/Handlers/Game/RegisterPcbCommandHandler.cs b/Server-Infinite/Handlers/Game/RegisterPcbCommandHandler.cs
-index 20a4ff2..b99d42d 100644
+index 20a4ff2..e6dcf7c 100644
 --- a/Server-Infinite/Handlers/Game/RegisterPcbCommandHandler.cs
 +++ b/Server-Infinite/Handlers/Game/RegisterPcbCommandHandler.cs
-@@ -47,6 +47,57 @@ public class RegisterPcbCommandHandler : IRequestHandler<RegisterPcbCommand, Res
+@@ -12,11 +12,16 @@ public class RegisterPcbCommandHandler : IRequestHandler<RegisterPcbCommand, Res
+ {
+     private readonly CardServerConfig _config;
+     private readonly ServerDbContext _context;
++    private readonly ILogger<RegisterPcbCommandHandler>? _logger;
++    private readonly IHttpContextAccessor? _http;
+     
+-    public RegisterPcbCommandHandler(IOptions<CardServerConfig> options, ServerDbContext context)
++    public RegisterPcbCommandHandler(IOptions<CardServerConfig> options, ServerDbContext context,
++        ILogger<RegisterPcbCommandHandler>? logger = null, IHttpContextAccessor? http = null)
+     {
+         _config = options.Value;
+         _context = context;
++        _logger = logger;
++        _http = http;
+     }
+     
+     public Task<Response> Handle(RegisterPcbCommand command, CancellationToken cancellationToken)
+@@ -47,6 +52,75 @@ public class RegisterPcbCommandHandler : IRequestHandler<RegisterPcbCommand, Res
              }
          };
  
@@ -494,7 +532,25 @@ index 20a4ff2..b99d42d 100644
 +            stun.AccountPass = mm.StunPass;
 +        }
 +        registerPcb.ServerInfoes.Add(stun);
++
++        // exvs2-lobbies: one line per RegisterPcb with what this cabinet was told (addresses only, no serial)
++        var src = _http?.HttpContext?.Connection.RemoteIpAddress;
++        if (src is { IsIPv4MappedToIPv6: true }) src = src.MapToIPv4();
++        var srcText = src?.ToString() ?? "-";
++        _logger?.LogInformation("NET register-pcb src={Source} -> match={Match} stun={Stun}:{Port}",
++            srcText, matchUrl, stunHost, mm.StunPort);
++        if (src != null && !System.Net.IPAddress.IsLoopback(src) &&
++            (IsLoopbackHost(stunHost) || IsLoopbackHost(HostOfUrl(matchUrl))))
++            _logger?.LogWarning("NET-WARN register-pcb src={Source}: a remote cabinet was given a loopback " +
++                                "match/STUN address ({Match}, {Stun}) - set MatchUrl/StunHost to an address it can reach",
++                srcText, matchUrl, stunHost);
 +    }
++
++    private static bool IsLoopbackHost(string host) =>
++        host is "localhost" or "::1" || host.StartsWith("127.");
++
++    private static string HostOfUrl(string url) =>
++        Uri.TryCreate(url, UriKind.Absolute, out var u) ? u.Host.Trim('[', ']') : "";
 +
 +    private static string HostOnly(string baseAddress)
 +    {
@@ -576,10 +632,10 @@ index 876eb85..a9dc23e 100644
 +}
 diff --git a/Server-Infinite/Handlers/Match/MatchingQueueCommandHandlers.cs b/Server-Infinite/Handlers/Match/MatchingQueueCommandHandlers.cs
 new file mode 100644
-index 0000000..b6da019
+index 0000000..ee6aa30
 --- /dev/null
 +++ b/Server-Infinite/Handlers/Match/MatchingQueueCommandHandlers.cs
-@@ -0,0 +1,106 @@
+@@ -0,0 +1,111 @@
 +using MediatR;
 +using Microsoft.Extensions.Options;
 +using nue.protocol.mms;
@@ -606,11 +662,13 @@ index 0000000..b6da019
 +{
 +    private readonly Matchmaker _mm;
 +    private readonly OnlineMatchingConfigurations _cfg;
++    private readonly IHttpContextAccessor? _http;
 +
-+    public EntryMatchingCommandHandler(Matchmaker mm, IOptions<CardServerConfig> options)
++    public EntryMatchingCommandHandler(Matchmaker mm, IOptions<CardServerConfig> options, IHttpContextAccessor? http = null)
 +    {
 +        _mm = mm;
 +        _cfg = options.Value.OnlineMatching;
++        _http = http;
 +    }
 +
 +    public Task<Response> Handle(EntryMatchingCommand request, CancellationToken cancellationToken)
@@ -623,7 +681,10 @@ index 0000000..b6da019
 +            response.Code = ErrorCode.ErrRequest;
 +            return Task.FromResult(response);
 +        }
-+        response.Code = _mm.Entry(e, MmsClock.Now);
++        // request source IP for the address diagnostics (no proxy headers are trusted)
++        var src = _http?.HttpContext?.Connection.RemoteIpAddress;
++        if (src is { IsIPv4MappedToIPv6: true }) src = src.MapToIPv4();
++        response.Code = _mm.Entry(e, MmsClock.Now, src?.ToString());
 +        // The game only reads poling_interval (seconds); apply_id is proto2-required so echo it.
 +        response.entry_matching = new Response.EntryMatching
 +        {
@@ -702,10 +763,10 @@ index f7dce78..a9abd37 100644
          return Task.FromResult(response);
 diff --git a/Server-Infinite/Matchmaking/Matchmaker.cs b/Server-Infinite/Matchmaking/Matchmaker.cs
 new file mode 100644
-index 0000000..51c0833
+index 0000000..7cb616e
 --- /dev/null
 +++ b/Server-Infinite/Matchmaking/Matchmaker.cs
-@@ -0,0 +1,415 @@
+@@ -0,0 +1,452 @@
 +using nue.protocol.mms;
 +
 +namespace ServerInfinite.Matchmaking;
@@ -782,6 +843,8 @@ index 0000000..51c0833
 +        public double Timeout, Created, LastSeen;
 +        /// <summary>last CheckMatching per human node (only nodes that polled at least once)</summary>
 +        public Dictionary<uint, double> SeenByNode = new();
++        /// <summary>HTTP source IP of each node's own EntryMatching (diagnostics only)</summary>
++        public Dictionary<uint, string> SourceByNode = new();
 +        public uint LeaderNode => Clients[0].NodeId;
 +        public Room? Room;
 +
@@ -841,6 +904,11 @@ index 0000000..51c0833
 +    /// <summary>s without CheckMatching (from any of the unit's cabinets) before a waiting unit is dropped.</summary>
 +    public double StaleAfter { get; set; } = 20;
 +    public Action<string>? Log { get; set; }
++    /// <summary>Warnings (address mismatch, missing STUN result). Falls back to <see cref="Log"/>.</summary>
++    public Action<string>? Warn { get; set; }
++    /// <summary>Also log every CheckMatching result (one line per poll; off by default).</summary>
++    public bool Verbose { get; set; }
++    private readonly HashSet<(string, string)> _warned = new();
 +    /// <summary>First node id issued by this process (0 = unknown). An unknown node below it was issued before a
 +    /// server restart, so its wait was lost: answer MATCH_CANCELED instead of ERR_MATCH_NOENTRY.</summary>
 +    public uint FirstNodeThisRun { get; set; }
@@ -855,9 +923,10 @@ index 0000000..51c0833
 +
 +    public int QueueLength { get { lock (_gate) return _queue.Count; } }
 +
-+    public ErrorCode Entry(Request.EntryMatching e, double now)
++    public ErrorCode Entry(Request.EntryMatching e, double now, string? sourceIp = null)
 +    {
 +        var t = Unit.From(e, now);
++        if (!string.IsNullOrEmpty(sourceIp)) t.SourceByNode[e.Myclient.NodeId] = NetDiag.Norm(sourceIp);
 +        lock (_gate)
 +        {
 +            Sweep(now);
@@ -887,20 +956,23 @@ index 0000000..51c0833
 +                {
 +                    // the partner cabinet of a fixed pair sent its own entry: merge into the existing unit
 +                    old.LastSeen = now;
++                    if (!string.IsNullOrEmpty(sourceIp)) old.SourceByNode[e.Myclient.NodeId] = NetDiag.Norm(sourceIp);
++                    NetEntry(e.Myclient, sourceIp, "merge");
 +                    return ErrorCode.Success;
 +                }
 +                // re-entry replaces a stale wait. disconnect test 2026-11-13: with a tombstone, so a pair leader
 +                // whose partner re-entered solo on the same node is told MATCH_CANCELED (was ERR_MATCH_NOENTRY).
-+                Drop(old, now);
++                Drop(old, now, reason: "replaced by re-entry");
 +            }
 +            foreach (var n in t.NodeIds) _ended.Remove(n);
 +            // load test 2026-11-13: one queue slot per cabinet. A new entry (new node ids) from a cabinet that still
 +            // has an older waiting unit (it left without CancelMatching) used to let both match -> two rooms at once.
 +            var serials = t.Humans.Select(c => c.PcbSerial).Where(s => !string.IsNullOrEmpty(s)).ToHashSet();
 +            foreach (var old in _queue.Where(u => u.Room == null && u.Humans.Any(c => serials.Contains(c.PcbSerial))).ToList())
-+                Drop(old, now);
++                Drop(old, now, reason: "same cabinet entered again");
 +            foreach (var n in t.NodeIds) _byNode[n] = t;
 +            _queue.Add(t);
++            NetEntry(e.Myclient, sourceIp, "entry");
 +            TryMatch(now);
 +            Log?.Invoke($"entry {t.WorldName} nodes=[{string.Join(",", t.NodeIds)}] slots={t.Slots} key={t.Key} level={t.Level} queue={_queue.Count}");
 +        }
@@ -908,6 +980,13 @@ index 0000000..51c0833
 +    }
 +
 +    public (ErrorCode Code, Room? Room, uint ApplyId) Check(uint nodeId, double now)
++    {
++        var r = CheckCore(nodeId, now);
++        if (Verbose) Log?.Invoke($"check node={nodeId} -> {r.Code} room={r.Room?.RoomId.ToString() ?? "-"}");
++        return r;
++    }
++
++    private (ErrorCode Code, Room? Room, uint ApplyId) CheckCore(uint nodeId, double now)
 +    {
 +        lock (_gate)
 +        {
@@ -929,7 +1008,7 @@ index 0000000..51c0833
 +            {
 +                // disconnect test 2026-11-13: tombstone the polling node too, so a retried poll (response lost)
 +                // gets MATCH_CANCELED again instead of ERR_MATCH_NOENTRY
-+                Drop(t, now);
++                Drop(t, now, reason: "matching timeout");
 +                return (ErrorCode.MatchCanceled, null, 0);
 +            }
 +            return (ErrorCode.Success, null, 0);         // empty = keep polling
@@ -945,8 +1024,23 @@ index 0000000..51c0833
 +            // re-entered with a new apply_id) cancelled the current entry. The partner's cancel carries its own
 +            // counter, so only the leader's apply_id is checked.
 +            if (applyId != 0 && nodeId == t.LeaderNode && applyId != t.ApplyId) return;
-+            Drop(t, now, except: nodeId);
++            Drop(t, now, except: nodeId, reason: $"cancelled by node {nodeId}");
 +        }
++    }
++
++    /// <summary>One NET line per entry; a warning once per (source, global) pair when STUN and HTTP disagree.</summary>
++    private void NetEntry(Client c, string? sourceIp, string what)
++    {
++        Log?.Invoke($"NET {what} {NetDiag.Describe(c, sourceIp)}");
++        var (cls, mismatch) = NetDiag.Classify(c, sourceIp);
++        var key = (NetDiag.Norm(sourceIp), NetDiag.Norm(c.GlobalIpaddress));
++        var warn = Warn ?? Log;
++        if (mismatch && _warned.Add(key))
++            warn?.Invoke($"NET-WARN node={c.NodeId} STUN global {key.Item2} != request source {key.Item1}: STUN and this " +
++                         "server were reached by different paths (wrong adapter bound, VPN vs internet, or a proxy) - " +
++                         "peers may not reach this cabinet");
++        else if (cls == "stun-missing" && _warned.Add(("", key.Item1)))
++            warn?.Invoke($"NET-WARN node={c.NodeId} has no STUN global address (STUN unreachable from its bound IP?)");
 +    }
 +
 +    // ---- internals (lock held) ----
@@ -1091,12 +1185,16 @@ index 0000000..51c0833
 +        }
 +        string Desc(List<Unit> s) => string.Join("+", s.Select(u => $"{(u.IsTeam ? "T" : "S")}[{string.Join(",", u.NodeIds)}]"));
 +        Log?.Invoke($"MATCH room={room.RoomId} {all[0].WorldName} {Desc(sides.S0)} vs {Desc(sides.S1)} (humans={room.Humans}/4)");
++        var src = new Dictionary<uint, string>();
++        foreach (var u in all) foreach (var kv in u.SourceByNode) src[kv.Key] = kv.Value;
++        Log?.Invoke(NetDiag.MatchLine(room.RoomId, clients.Select(c => (c.GroupId, c.Client)), src));
 +    }
 +
 +    /// <summary>Remove a unit. With <paramref name="now"/>, its other human nodes (e.g. the partner of a
 +    /// fixed pair) get MATCH_CANCELED on their next poll instead of ERR_MATCH_NOENTRY.</summary>
-+    private void Drop(Unit t, double? now = null, uint? except = null)
++    private void Drop(Unit t, double? now = null, uint? except = null, string? reason = null)
 +    {
++        if (reason != null) Log?.Invoke($"drop nodes=[{string.Join(",", t.NodeIds)}] reason={reason}");
 +        if (now != null)
 +            foreach (var n in t.NodeIds)
 +                if (n != except && _byNode.TryGetValue(n, out var u) && ReferenceEquals(u, t)) _ended[n] = now.Value;
@@ -1114,12 +1212,83 @@ index 0000000..51c0833
 +            // disconnect test 2026-11-13: staleness per cabinet. With one LastSeen per unit, the partner's polls
 +            // kept a pair whose leader had vanished (or vice versa) matchable -> ghost in the room.
 +            if (t.Room == null && (now - t.LastSeen > StaleAfter || t.SeenByNode.Values.Any(s => now - s > StaleAfter)))
-+                Drop(t, now);
++                Drop(t, now, reason: "stopped polling (stale)");
 +            else if (t.Room != null && now - t.Room.At > MatchedKeep) Drop(t);
 +        }
 +        foreach (var n in _ended.Where(kv => now - kv.Value > EndedKeep).Select(kv => kv.Key).ToList())
 +            _ended.Remove(n);
 +    }
++}
+diff --git a/Server-Infinite/Matchmaking/NetDiag.cs b/Server-Infinite/Matchmaking/NetDiag.cs
+new file mode 100644
+index 0000000..ad1c9c7
+--- /dev/null
++++ b/Server-Infinite/Matchmaking/NetDiag.cs
+@@ -0,0 +1,65 @@
++using nue.protocol.mms;
++
++namespace ServerInfinite.Matchmaking;
++
++/// <summary>
++/// [exvs2-lobbies / EXPERIMENTAL] Address / NAT diagnostics for the log (analysis/networking-issues.md §6).
++/// Only node ids, IPs, ports and NAT types are printed: never pcb_serial values or card data.
++/// </summary>
++public static class NetDiag
++{
++    public static string Norm(string? ip)
++    {
++        var s = (ip ?? "").Trim();
++        return s.StartsWith("::ffff:", StringComparison.OrdinalIgnoreCase) ? s[7..] : s;   // IPv4-mapped source
++    }
++
++    private static bool IsLoopback(string ip) => ip.StartsWith("127.") || ip is "::1" or "localhost";
++
++    /// <summary>Class: "no-nat" (STUN global == adapter local), "nat", "stun-missing". Mismatch: STUN global IP
++    /// differs from the IP the HTTP request came from (loopback sources are ignored).</summary>
++    public static (string Class, bool Mismatch) Classify(Client c, string? source)
++    {
++        string g = Norm(c.GlobalIpaddress), l = Norm(c.LocalIpaddress), src = Norm(source);
++        var cls = g is "" or "0.0.0.0" ? "stun-missing" : g == l ? "no-nat" : "nat";
++        return (cls, src != "" && cls != "stun-missing" && g != src && !IsLoopback(src));
++    }
++
++    public static string Describe(Client c, string? source)
++    {
++        var (cls, mismatch) = Classify(c, source);
++        return $"node={c.NodeId} src={(Norm(source) is var s && s != "" ? s : "-")} " +
++               $"local={Or(c.LocalIpaddress)}:{c.LocalPort} global={Or(c.GlobalIpaddress)}:{c.GlobalPort} " +
++               $"nat={(int)c.NatMappingType}/{(int)c.NatFilteringType} class={cls}{(mismatch ? " MISMATCH" : "")}";
++    }
++
++    /// <summary>What <paramref name="me"/> dials for <paramref name="peer"/> (exe 0x140794590): the peer's local
++    /// ip:port when both STUN global IPs are equal, else its global ip:port.</summary>
++    public static (string How, string Addr) DialAddr(Client me, Client peer)
++    {
++        var g = Norm(me.GlobalIpaddress);
++        return g != "" && g == Norm(peer.GlobalIpaddress)
++            ? ("local", $"{Or(peer.LocalIpaddress)}:{peer.LocalPort}")
++            : ("global", $"{Or(peer.GlobalIpaddress)}:{peer.GlobalPort}");
++    }
++
++    /// <summary>One line per room: every human's addresses and, for each human pair, which path is used.</summary>
++    public static string MatchLine(uint roomId, IEnumerable<(uint Group, Client Client)> clients,
++        IReadOnlyDictionary<uint, string> sourceByNode)
++    {
++        var hs = clients.Where(x => Matchmaker.Unit.IsHuman(x.Client)).ToList();
++        var parts = hs.Select(x => $"g{x.Group} {Describe(x.Client, sourceByNode.GetValueOrDefault(x.Client.NodeId))}");
++        var pairs = new List<string>();
++        for (var i = 0; i < hs.Count; i++)
++            for (var j = i + 1; j < hs.Count; j++)
++            {
++                Client a = hs[i].Client, b = hs[j].Client;
++                var (how, ab) = DialAddr(a, b);
++                var (_, ba) = DialAddr(b, a);
++                pairs.Add($"{a.NodeId}<->{b.NodeId} {how}{(how == "local" ? " same-NAT" : "")} ({ab} / {ba})");
++            }
++        return $"MATCH-NET room={roomId} | {string.Join(" ; ", parts)} | pairs: {(pairs.Count > 0 ? string.Join(" ; ", pairs) : "-")}";
++    }
++
++    private static string Or(string? s) => string.IsNullOrEmpty(s) ? "-" : s;
 +}
 diff --git a/Server-Infinite/Matchmaking/NodeIdAllocator.cs b/Server-Infinite/Matchmaking/NodeIdAllocator.cs
 new file mode 100644
@@ -1287,10 +1456,10 @@ index bf150d5..969bd29 100644
          var options = new JsonSerializerOptions
 diff --git a/Server-Infinite/Models/Config/OnlineMatchingConfigurations.cs b/Server-Infinite/Models/Config/OnlineMatchingConfigurations.cs
 new file mode 100644
-index 0000000..7805626
+index 0000000..24b42b7
 --- /dev/null
 +++ b/Server-Infinite/Models/Config/OnlineMatchingConfigurations.cs
-@@ -0,0 +1,56 @@
+@@ -0,0 +1,58 @@
 +namespace ServerInfinite.Models.Config;
 +
 +/// <summary>
@@ -1335,6 +1504,8 @@ index 0000000..7805626
 +    public uint FirstNodeId { get; set; } = 1000;
 +    /// <summary>Random seed for shuffles (0 = random). Only useful for tests.</summary>
 +    public int ShuffleSeed { get; set; } = 0;
++    /// <summary>Also log every CheckMatching result (one line per poll). Address/NAT lines are always logged once per entry/match.</summary>
++    public bool VerboseLog { get; set; } = false;
 +
 +    /// <summary>
 +    /// LoadClassMatch schedule rows. IB appears to compare schedule start/end against the local HOUR
@@ -1348,7 +1519,7 @@ index 0000000..7805626
 +    public bool PersistClassMatchResult { get; set; } = true;
 +}
 diff --git a/Server-Infinite/Program.cs b/Server-Infinite/Program.cs
-index 1745d32..fd6cee4 100644
+index 1745d32..f88123b 100644
 --- a/Server-Infinite/Program.cs
 +++ b/Server-Infinite/Program.cs
 @@ -28,7 +28,9 @@ var failed = false;
@@ -1361,7 +1532,18 @@ index 1745d32..fd6cee4 100644
      SQLitePCL.Batteries_V2.Init();
      
      var builder = WebApplication.CreateBuilder(args);
-@@ -67,6 +69,26 @@ try
+@@ -36,7 +38,9 @@ try
+     const string configurationsDirectory = "Configurations";
+     builder.Configuration.AddJsonFile($"{configurationsDirectory}/kestrel.json", optional: false)
+         .AddJsonFile($"{configurationsDirectory}/log.json", optional: false)
+-        .AddJsonFile($"{configurationsDirectory}/server.json", optional: false);
++        .AddJsonFile($"{configurationsDirectory}/server.json", optional: false)
++        // exvs2-lobbies: re-add env vars after the json files so CardServerConfig__... overrides actually win
++        .AddEnvironmentVariables();
+ 
+     builder.Services.AddOptions<CardServerConfig>()
+         .Bind(builder.Configuration.GetSection(CardServerConfig.CARD_SERVER_SECTION))
+@@ -67,6 +71,28 @@ try
      builder.Services.AddSingleton<ServerInfinite.Processor.Tracker.ITrackerCatalog>(sp =>
          new ServerInfinite.Processor.Tracker.TrackerCatalog(sp.GetRequiredService<IWebHostEnvironment>().WebRootFileProvider));
      builder.Services.AddMemoryCache();
@@ -1381,6 +1563,8 @@ index 1745d32..fd6cee4 100644
 +            mm.SoftAttributeWaitSeconds, mm.ShuffleSeed)
 +        {
 +            Log = message => logger.LogInformation("{Message}", message),
++            Warn = message => logger.LogWarning("{Message}", message),
++            Verbose = mm.VerboseLog,
 +            StaleAfter = Math.Max(3 * Math.Max(1u, mm.PollingIntervalSeconds), mm.StaleAfterSeconds),
 +            FirstNodeThisRun = (alloc as ServerInfinite.Matchmaking.FileNodeIdAllocator)?.FirstThisRun ?? 0
 +        };
@@ -1412,10 +1596,10 @@ index 519b7c9..2206c64 100644
      <Compile Remove="Services\**" />
 diff --git a/Tests/Matchmaking.Tests/MatchmakerTests.cs b/Tests/Matchmaking.Tests/MatchmakerTests.cs
 new file mode 100644
-index 0000000..1148edb
+index 0000000..1ab81dd
 --- /dev/null
 +++ b/Tests/Matchmaking.Tests/MatchmakerTests.cs
-@@ -0,0 +1,385 @@
+@@ -0,0 +1,455 @@
 +using nue.protocol.mms;
 +using ServerInfinite.Matchmaking;
 +using Xunit;
@@ -1799,6 +1983,76 @@ index 0000000..1148edb
 +            Assert.Equal(ErrorCode.ErrMatchNoentry, mm.Check(after.Take(2)[0], 0).Code);
 +        }
 +        finally { File.Delete(path); }
++    }
++
++    // ---- network diagnostics (networking-issues.md §6) ----
++
++    private static Client Net(uint node, string global, string local, uint gport = 48000)
++    {
++        var c = Cl(node);
++        c.GlobalIpaddress = global; c.GlobalPort = gport; c.LocalIpaddress = local; c.LocalPort = 48000;
++        return c;
++    }
++
++    [Fact]
++    public void NetClassesAndMismatch()
++    {
++        Assert.Equal(("no-nat", false), NetDiag.Classify(Net(1, "26.1.2.3", "26.1.2.3"), "26.1.2.3"));
++        Assert.Equal(("nat", false), NetDiag.Classify(Net(1, "203.0.113.5", "192.168.1.5"), "203.0.113.5"));
++        Assert.Equal(("nat", true), NetDiag.Classify(Net(1, "203.0.113.5", "192.168.1.5"), "26.9.9.9"));
++        Assert.Equal(("stun-missing", false), NetDiag.Classify(Net(1, "", "192.168.1.5"), "26.9.9.9"));
++        Assert.Equal(("nat", false), NetDiag.Classify(Net(1, "203.0.113.5", "192.168.1.5"), "127.0.0.1"));
++        Assert.Equal(("nat", false), NetDiag.Classify(Net(1, "203.0.113.5", "192.168.1.5"), "::ffff:203.0.113.5"));
++    }
++
++    [Fact]
++    public void DialPathFollowsTheExeRule()
++    {
++        Client a = Net(1, "203.0.113.5", "192.168.1.5"), b = Net(2, "203.0.113.5", "192.168.1.6", 50001),
++               d = Net(3, "198.51.100.7", "10.0.0.2", 61000);
++        Assert.Equal(("local", "192.168.1.6:48000"), NetDiag.DialAddr(a, b));   // same global -> peer's local
++        Assert.Equal(("global", "198.51.100.7:61000"), NetDiag.DialAddr(a, d));
++    }
++
++    [Fact]
++    public void EntryLogsNetLineAndWarnsOncePerAddressPair()
++    {
++        var logs = new List<string>(); var warns = new List<string>();
++        var mm = New(); mm.Log = logs.Add; mm.Warn = warns.Add;
++        for (var i = 0; i < 2; i++)
++        {
++            var e = Entry(23);
++            e.Myclient.GlobalIpaddress = "203.0.113.5"; e.Myclient.LocalIpaddress = "192.168.1.5";
++            mm.Entry(e, 0, "26.4.4.4");
++        }
++        Assert.Single(warns);
++        Assert.Contains("NET-WARN", warns[0]);
++        var nets = logs.Where(l => l.StartsWith("NET entry")).ToList();
++        Assert.Equal(2, nets.Count);
++        Assert.Contains("src=26.4.4.4", nets[0]);
++        Assert.Contains("MISMATCH", nets[0]);
++        Assert.DoesNotContain(logs, l => l.Contains("P10"));                    // pcb_serial values never logged
++    }
++
++    [Fact]
++    public void MatchLogsWhichAddressEachPairUses()
++    {
++        var logs = new List<string>(); var warns = new List<string>();
++        var mm = New(); mm.Log = logs.Add; mm.Warn = warns.Add;
++        for (var i = 0; i < 4; i++)
++        {
++            var e = Entry(23);
++            var pub = i < 2 ? "203.0.113.5" : "203.0.113.9";
++            e.Myclient.GlobalIpaddress = pub; e.Myclient.LocalIpaddress = $"192.168.1.{10 + i}";
++            mm.Entry(e, 0, pub);
++        }
++        var line = Assert.Single(logs, l => l.StartsWith("MATCH-NET"));
++        Assert.Equal(2, line.Split("same-NAT").Length - 1);                     // the two pairs sharing a public IP
++        Assert.Empty(warns);
++        Assert.DoesNotContain(logs, l => l.StartsWith("check "));               // not verbose: no per-poll lines
++        mm.Verbose = true;
++        mm.Check(101, 1);
++        Assert.Contains(logs, l => l.StartsWith("check node=101"));
 +    }
 +}
 diff --git a/Tests/Matchmaking.Tests/Matchmaking.Tests.csproj b/Tests/Matchmaking.Tests/Matchmaking.Tests.csproj

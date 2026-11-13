@@ -2,7 +2,7 @@
 """Deterministic tests for the casual/shuffle matcher in mms_server.py (no network, injected clock).
 Run: python3 test_casual.py      EXPERIMENTAL: shapes follow static analysis, untested in game."""
 import unittest
-from mms_server import (Matchmaker, RatingStore, SUCCESS, MATCH_CANCELED, NPC_SERIAL, ERR_MATCH_NOENTRY,
+from mms_server import (net_class, net_desc, dial_addr, match_net_line, Matchmaker, RatingStore, SUCCESS, MATCH_CANCELED, NPC_SERIAL, ERR_MATCH_NOENTRY,
                         ERR_DUPLICATE_ENTRY, ERR_NODEID)
 
 _n = [100]
@@ -241,6 +241,55 @@ class DisconnectRegressions(unittest.TestCase):
         mm = Matchmaker(RatingStore(), seed=1); mm.first_node_this_run = after.first_this_run
         self.assertEqual(mm.check(old, 0)[0], MATCH_CANCELED)
         self.assertEqual(mm.check(after.take(2)[0], 0)[0], ERR_MATCH_NOENTRY)
+
+class NetDiagnostics(unittest.TestCase):
+    """Address/NAT logging (networking-issues.md §6)."""
+    def c(self, node, g, l, port=48000):
+        x = cl(node); x.update(global_ipaddress=g, global_port=port, local_ipaddress=l, local_port=48000); return x
+
+    def test_classes(self):
+        self.assertEqual(net_class(self.c(1, '26.1.2.3', '26.1.2.3'), '26.1.2.3'), ('no-nat', False))
+        self.assertEqual(net_class(self.c(1, '203.0.113.5', '192.168.1.5'), '203.0.113.5'), ('nat', False))
+        self.assertEqual(net_class(self.c(1, '203.0.113.5', '192.168.1.5'), '26.9.9.9'), ('nat', True))
+        self.assertEqual(net_class(self.c(1, '', '192.168.1.5'), '26.9.9.9'), ('stun-missing', False))
+        self.assertEqual(net_class(self.c(1, '203.0.113.5', '192.168.1.5'), '127.0.0.1'), ('nat', False))
+        self.assertEqual(net_class(self.c(1, '203.0.113.5', '192.168.1.5'), '::ffff:203.0.113.5'), ('nat', False))
+
+    def test_dial_path(self):
+        a, b = self.c(1, '203.0.113.5', '192.168.1.5'), self.c(2, '203.0.113.5', '192.168.1.6', 50001)
+        d = self.c(3, '198.51.100.7', '10.0.0.2', 61000)
+        self.assertEqual(dial_addr(a, b), ('local', '192.168.1.6:48000'))   # same global -> peer's local
+        self.assertEqual(dial_addr(a, d), ('global', '198.51.100.7:61000'))
+
+    def test_match_line_and_no_card_data(self):
+        a, b = self.c(1, '203.0.113.5', '192.168.1.5'), self.c(2, '203.0.113.5', '192.168.1.6')
+        line = match_net_line(7, [{'group_id': 0, 'client': a}, {'group_id': 1, 'client': b}], {1: '203.0.113.5'})
+        self.assertIn('1<->2 local same-NAT', line)
+        self.assertIn('src=203.0.113.5', line)
+        self.assertNotIn('P1', line)                                       # pcb_serial not logged
+
+    def test_entry_logs_once_and_warns_once(self):
+        mm = Matchmaker(RatingStore(), seed=1, stale_after=1e6)
+        with self.assertLogs('mms', level='INFO') as cm:
+            for _ in range(2):
+                e = entry(23); e['myclient'].update(global_ipaddress='203.0.113.5', local_ipaddress='192.168.1.5')
+                mm.entry(e, 0, source='26.4.4.4')
+        warns = [r for r in cm.output if 'NET-WARN' in r]
+        nets = [r for r in cm.output if 'NET entry' in r]
+        self.assertEqual(len(warns), 1); self.assertEqual(len(nets), 2)
+        self.assertIn('MISMATCH', nets[0])
+
+    def test_match_logs_net_line(self):
+        mm = Matchmaker(RatingStore(), seed=1, stale_after=1e6)
+        with self.assertLogs('mms', level='INFO') as cm:
+            for i in range(4):
+                e = entry(23); e['myclient'].update(global_ipaddress='203.0.113.%d' % (5 if i < 2 else 9),
+                                                    local_ipaddress='192.168.1.%d' % (10 + i))
+                mm.entry(e, 0, source='203.0.113.%d' % (5 if i < 2 else 9))
+        line = [r for r in cm.output if 'MATCH-NET' in r]
+        self.assertEqual(len(line), 1)
+        self.assertEqual(line[0].count('same-NAT'), 2)                     # the two pairs sharing a public IP
+        self.assertNotIn('NET-WARN', ' '.join(cm.output))
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)

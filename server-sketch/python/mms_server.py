@@ -122,6 +122,52 @@ class RatingStore:
             return d
 
 
+# ---- network diagnostics (networking-issues.md §6): addresses only, never card data ----------------------
+def _norm_ip(s):
+    s = (s or '').strip()
+    if s.startswith('::ffff:'): s = s[7:]                       # IPv4-mapped source address
+    return s
+
+def _is_loopback(ip):
+    return ip.startswith('127.') or ip in ('::1', 'localhost')
+
+def net_class(c, source=None):
+    """-> (class, mismatch). class: 'no-nat' (STUN global == adapter local), 'nat', 'stun-missing'.
+    mismatch: the STUN global IP differs from the IP this HTTP request came from (loopback sources ignored)."""
+    g, l, src = _norm_ip(c.get('global_ipaddress')), _norm_ip(c.get('local_ipaddress')), _norm_ip(source)
+    if not g or g == '0.0.0.0': cls = 'stun-missing'
+    elif g == l: cls = 'no-nat'
+    else: cls = 'nat'
+    mismatch = bool(src and cls != 'stun-missing' and g != src and not _is_loopback(src))
+    return cls, mismatch
+
+def net_desc(c, source=None):
+    cls, mism = net_class(c, source)
+    return 'node=%s src=%s local=%s:%s global=%s:%s nat=%s/%s class=%s%s' % (
+        c.get('node_id'), _norm_ip(source) or '-', c.get('local_ipaddress') or '-', c.get('local_port', 0),
+        c.get('global_ipaddress') or '-', c.get('global_port', 0), c.get('nat_mapping_type', '-'),
+        c.get('nat_filtering_type', '-'), cls, ' MISMATCH' if mism else '')
+
+def dial_addr(me, peer):
+    """What `me` dials for `peer` (exe 0x140794590): peer's local ip:port when both STUN global IPs are equal."""
+    if _norm_ip(me.get('global_ipaddress')) and _norm_ip(me.get('global_ipaddress')) == _norm_ip(peer.get('global_ipaddress')):
+        return 'local', '%s:%s' % (peer.get('local_ipaddress') or '-', peer.get('local_port', 0))
+    return 'global', '%s:%s' % (peer.get('global_ipaddress') or '-', peer.get('global_port', 0))
+
+def match_net_line(room_id, clients, src):
+    """One line per room: each human's addresses + for every human pair which path is used."""
+    hs = [(x['group_id'], x['client']) for x in clients if is_human(x['client'])]
+    parts = ['g%d %s' % (g, net_desc(c, src.get(c['node_id']))) for g, c in hs]
+    pairs = []
+    for i in range(len(hs)):
+        for j in range(i + 1, len(hs)):
+            a, b = hs[i][1], hs[j][1]
+            how, ab = dial_addr(a, b); _, ba = dial_addr(b, a)
+            pairs.append('%s<->%s %s%s (%s / %s)' % (a['node_id'], b['node_id'], how,
+                                                      ' same-NAT' if how == 'local' else '', ab, ba))
+    return 'MATCH-NET room=%d | %s | pairs: %s' % (room_id, ' ; '.join(parts), ' ; '.join(pairs) or '-')
+
+
 def is_human(c):
     """Client.property[0] == "Y" marks a real player; the client builds its CPU stand-in with "N"
     (0x1407bb39f) and drops non-"Y" entries from its team table (0x1407540e0 / 0x140792760)."""
@@ -223,6 +269,8 @@ class Matchmaker:
         self.stale_after = stale_after
         self.ended = {}        # node_id -> time its unit was dropped by the server (-> MATCH_CANCELED once)
         self.first_node_this_run = 0   # unknown node below this was issued before a restart -> MATCH_CANCELED
+        self.verbose = False           # log every CheckMatching result (debug level)
+        self.warned = set()            # (source, global) pairs already warned about
         self.by_node = {}      # node_id -> Unit (every human node of a unit points to it)
         self.queue = []        # waiting units, FIFO
         self.rooms = {}        # room_id -> {'groups': {0: am_ids, 1: am_ids}, 'world':, 'at':}
@@ -231,8 +279,9 @@ class Matchmaker:
         self.fill_after, self.partial = fill_after, partial
         self.rng = random.Random(seed)
 
-    def entry(self, e, now):
+    def entry(self, e, now, source=None):
         t = Unit(e, now, self.ratings)
+        t.src = {t.leader: _norm_ip(source)} if source else {}
         if not e['myclient'].get('node_id'):
             return ERR_NODEID                                         # never issued by IssueNodeId
         with self.lock:
@@ -260,27 +309,51 @@ class Matchmaker:
                 if old and old.room is None and old.node_ids() == t.node_ids() and \
                         (t.leader != old.leader or t.apply_id == old.apply_id):
                     old.last_seen = now
+                    if source: old.src[t.leader] = _norm_ip(source)
                     for n2 in t.node_ids(): self.by_node[n2] = old
+                    self._net_entry(e['myclient'], source, 'merge')
                     return SUCCESS
                 if old and old.room is None:
                     # re-entry replaces stale wait; disconnect test: with a tombstone, so a pair leader whose
                     # partner re-entered solo on the same node gets MATCH_CANCELED (was ERR_MATCH_NOENTRY)
-                    self._drop(old, now)
+                    self._drop(old, now, reason='replaced by re-entry')
             for n in t.node_ids(): self.ended.pop(n, None)
             # load test 2026-11-13: one queue slot per cabinet; an older waiting unit of the same cabinet (left
             # without CancelMatching, then re-entered with new node ids) used to match too -> two rooms at once.
             serials = {c.get('pcb_serial') for c in t.humans() if c.get('pcb_serial')}
             for old in [u for u in self.queue if u.room is None and any(c.get('pcb_serial') in serials for c in u.humans())]:
-                self._drop(old, now)
+                self._drop(old, now, reason='same cabinet entered again')
             for n in t.node_ids(): self.by_node[n] = t
             self.queue.append(t)
+            # log before matching so the NET / entry lines come before any MATCH line they trigger
+            self._net_entry(e['myclient'], source, 'entry')
+            log.info('entry %s unit=%s slots=%d humans=%d key=%s level=%s mmr=%.0f seq=%s mk_room=%s queue=%d',
+                     t.wname, sorted(t.node_ids()), t.slots, len(t.humans()), t.key, t.level, t.mmr,
+                     t.seq_num, t.create_room, len(self.queue))
             self._try_match(now)
-        log.info('entry %s unit=%s slots=%d humans=%d key=%s level=%s mmr=%.0f seq=%s mk_room=%s queue=%d',
-                 t.wname, sorted(t.node_ids()), t.slots, len(t.humans()), t.key, t.level, t.mmr,
-                 t.seq_num, t.create_room, len(self.queue))
         return SUCCESS
 
+    def _net_entry(self, c, source, what):
+        """One NET line per entry; a warning once per (source, global) pair when STUN and HTTP disagree."""
+        log.info('NET %s %s', what, net_desc(c, source))
+        cls, mism = net_class(c, source)
+        key = (_norm_ip(source), _norm_ip(c.get('global_ipaddress')))
+        if mism and key not in self.warned:
+            self.warned.add(key)
+            log.warning('NET-WARN node=%s STUN global %s != request source %s: STUN and this server were reached '
+                        'by different paths (wrong adapter bound, VPN vs internet, or a proxy) - peers may not '
+                        'reach this cabinet', c.get('node_id'), key[1], key[0])
+        elif cls == 'stun-missing' and ('', key) not in self.warned:
+            self.warned.add(('', key))
+            log.warning('NET-WARN node=%s has no STUN global address (STUN unreachable from its bound IP?)',
+                        c.get('node_id'))
+
     def check(self, node_id, now):
+        r = self._check(node_id, now)
+        if self.verbose: log.debug('check node=%s -> code=%s room=%s', node_id, r[0], r[1] and r[1]['room_id'])
+        return r
+
+    def _check(self, node_id, now):
         with self.lock:
             seen = self.by_node.get(node_id)
             if seen:                                                  # before the sweep: the poller is alive
@@ -297,7 +370,7 @@ class Matchmaker:
             if now - t.created > t.timeout:
                 # disconnect test: tombstone the polling node too, so a retried poll (lost response) gets
                 # MATCH_CANCELED again instead of ERR_MATCH_NOENTRY
-                self._drop(t, now); return MATCH_CANCELED, None                     # game falls back (CPU battle) [M]
+                self._drop(t, now, reason='matching timeout'); return MATCH_CANCELED, None                     # game falls back (CPU battle) [M]
             return SUCCESS, None                                      # empty = keep polling
 
     def cancel(self, node_id, now=0, apply_id=0):
@@ -307,7 +380,7 @@ class Matchmaker:
             # disconnect test 2026-11-13: a late / reordered cancel of an OLDER attempt (leader already re-entered
             # with a new apply_id) cancelled the current entry. Only the leader's apply_id is comparable.
             if apply_id and node_id == t.leader and apply_id != t.apply_id: return
-            self._drop(t, now, node_id)
+            self._drop(t, now, node_id, reason='cancelled by node %s' % node_id)
 
     def result(self, room_id, winner_group):
         with self.lock:
@@ -376,8 +449,13 @@ class Matchmaker:
         desc = lambda s: '+'.join('%s%s' % ('T' if u.team else 'S', sorted(u.node_ids())) for u in s)
         log.info('MATCH room=%d %s %s vs %s (humans=%d/4)', room_id, sides[0][0].wname,
                  desc(sides[0]), desc(sides[1]), self.rooms[room_id]['humans'])
+        src = {}
+        for s in sides:
+            for u in s: src.update(getattr(u, 'src', {}))
+        log.info('%s', match_net_line(room_id, clients, src))
 
-    def _drop(self, t, now=None, except_node=None):
+    def _drop(self, t, now=None, except_node=None, reason=None):
+        if reason: log.info('drop nodes=%s reason=%s', sorted(t.node_ids()), reason)
         if now is not None:                       # its other nodes (pair partner) get MATCH_CANCELED, not NOENTRY
             for n in t.node_ids():
                 if n != except_node and self.by_node.get(n) is t: self.ended[n] = now
@@ -392,7 +470,7 @@ class Matchmaker:
             # leader (or vice versa) matchable -> ghost in the room.
             if t.room is None and (now - t.last_seen > self.stale_after or
                                    any(now - s > self.stale_after for s in t.seen_by_node.values())):
-                self._drop(t, now)
+                self._drop(t, now, reason='stopped polling (stale)')
             elif t.room and now - t.room['at'] > MATCHED_KEEP: self._drop(t)
         for n in [n for n, at in self.ended.items() if now - at > ENDED_KEEP]:
             del self.ended[n]
@@ -407,7 +485,7 @@ class Mms:
     def __init__(self, nodes, mm):
         self.nodes, self.mm = nodes, mm
 
-    def handle(self, body):
+    def handle(self, body, source=None):
         try:
             req = decode('Request', body)
         except Exception as ex:
@@ -422,13 +500,14 @@ class Mms:
             r = req.get('issue_node_id', {})
             ids = self.nodes.take(r.get('issue_count', 1))
             resp['issue_node_id'] = {'node_id': ids}
-            log.info('issue %d ids -> %s (serial len %d)', len(ids), ids, len(r.get('pcb_serial', '')))
+            log.info('issue %d ids -> %s (serial len %d) src=%s', len(ids), ids, len(r.get('pcb_serial', '')),
+                     _norm_ip(source) or '-')
         elif rtype == ENTRY:
             e = req.get('entry_matching')
             if not e or 'myclient' not in e:
                 resp['code'] = ERR_REQUEST
             else:
-                resp['code'] = self.mm.entry(e, now)
+                resp['code'] = self.mm.entry(e, now, source)
                 resp['entry_matching'] = {'poling_interval': POLL_INTERVAL, 'apply_id': e.get('apply_id', 0)}
         elif rtype == CHECK:
             c = req.get('check_matching', {})
@@ -475,7 +554,7 @@ def make_handler(mms, result_token=None):
                 return self._send(200 if d is not None else 404,
                                   json.dumps({'delta': d}).encode(), 'application/json')
             log.debug('POST %s rev=%s len=%d', self.path, self.headers.get('X-Nue-Protobuf-Revision'), n)
-            self._send(200, mms.handle(body))           # game requires HTTP 200 for every reply
+            self._send(200, mms.handle(body, self.client_address[0]))           # game requires HTTP 200 for every reply
         def do_GET(self):                                # health check for humans
             self._send(200, b'mms ok\n', 'text/plain')
         def log_message(self, fmt, *a): log.debug('%s ' + fmt, self.client_address[0], *a)
@@ -498,6 +577,7 @@ def main():
     nodes = NodeIdAllocator(a.state)
     mm = Matchmaker(RatingStore(a.ratings), a.fill_after, not a.no_partial, stale_after=max(a.stale_after, 3 * POLL_INTERVAL))
     mm.first_node_this_run = nodes.first_this_run
+    mm.verbose = a.v                   # -v: also log every CheckMatching result
     mms = Mms(nodes, mm)
     srv = ThreadingHTTPServer((a.host, a.port), make_handler(mms, a.result_token))
     log.info('listening on http://%s:%d/mms', a.host, a.port)

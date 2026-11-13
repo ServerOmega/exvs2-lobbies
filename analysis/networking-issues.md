@@ -81,8 +81,9 @@ ip:port. Consequences:
    `Set-NetConnectionProfile -InterfaceAlias "<name>" -NetworkCategory Private` **[W]**.
 4. **Third-party AV/firewalls** (Norton, Kaspersky, Bitdefender, ESET, Comodo…) have their own rules and "trusted
    network" lists. Mark the VPN adapter as trusted and allow the exe **[W Radmin help]**. To test, disable them briefly.
-5. **Same STUN for everybody, reachable from the bound IP.** In the server log, `global_ip` should be either
-   every player's real public IP (internet STUN) or every player's overlay IP (overlay STUN), never a mix.
+5. **Same STUN for everybody, reachable from the bound IP.** In the server log (`NET entry ... global=`, §6), the
+   global IP should be either every player's real public IP (internet STUN) or every player's overlay IP (overlay
+   STUN), never a mix. A `NET-WARN ... != request source` line for a player points here.
 6. **NAT type.** If two players fail to connect but each can play others, at least one is behind symmetric NAT /
    CGNAT. Check: WAN IP on the router ≠ public IP (whatismyip) → double NAT or CGNAT. A WAN IP in 100.64.0.0/10 →
    CGNAT. Fixes: forward UDP 48000(+offset) to a static LAN IP, ask the ISP for a public IP, or use an overlay.
@@ -122,11 +123,52 @@ ip:port. Consequences:
 * **Same house, two PCs:** works on either setup without hairpin (same global → local dial), as long as both local
   IPs are right.
 
-## 6. Server-side mitigations we could add (not implemented)
+## 6. Reading the network log
+Both servers (patched C# card server and `mms_server.py`) log each player's addresses and NAT type, **implemented
+2026-11-13**. Card data (ChipId / AccessCode / BootToken) and `pcb_serial` are never logged. There is one line per
+register, entry, match or drop, not one per poll. Per-poll lines are opt-in: C# `"VerboseLog": true`, Python `-v`.
+C# writes to `server.log` / the console. Python writes to stderr.
+
+Sample lines (box smoke test, fake cabinets, fake/documentation IPs):
+```
+NET register-pcb src=172.30.0.2 -> match=http://172.30.0.2:28080/match stun=172.30.0.2:3478
+NET-WARN register-pcb src=172.30.0.2: a remote cabinet was given a loopback match/STUN address (http://127.0.0.1:28080/match, 172.30.0.2) - set MatchUrl/StunHost to an address it can reach
+NET entry node=3238 src=172.30.0.2 local=192.168.1.10:40000 global=172.30.0.2:40000 nat=1/1 class=nat
+NET entry node=3236 src=172.30.0.2 local=10.8.0.2:40000 global=203.0.113.7:40000 nat=1/2 class=nat MISMATCH
+NET-WARN node=3236 STUN global 203.0.113.7 != request source 172.30.0.2: STUN and this server were reached by different paths (wrong adapter bound, VPN vs internet, or a proxy) - peers may not reach this cabinet
+NET entry node=3240 src=172.30.0.2 local=198.51.100.9:40000 global=198.51.100.9:40000 nat=0/0 class=no-nat MISMATCH
+MATCH-NET room=1 | g0 node=3236 ... ; g1 node=3238 ... | pairs: 3242<->3238 local same-NAT (192.168.1.10:40000 / 192.168.1.11:40000) ; 3236<->3240 global (198.51.100.9:40000 / 203.0.113.7:40000) ; ...
+drop nodes=[1000] reason=stopped polling (stale)
+```
+| Field | Meaning |
+|---|---|
+| `src` | IP the HTTP request came from (TCP peer; proxy headers are not trusted) |
+| `local` | ip:port the cabinet says its adapter has (§2.2). Wrong here = wrong adapter: use the hook's `IpAddress=` |
+| `global` | ip:port STUN saw (§2.3). `0.0.0.0` / empty = STUN failed → `class=stun-missing` |
+| `nat=m/f` | NAT mapping / filtering type the game computed. `0/0` = "no NAT" |
+| `class` | `no-nat` (local = global: public IP or overlay STUN), `nat`, `stun-missing` |
+| `MISMATCH` | STUN global IP ≠ `src`. Ignored when `src` is loopback (server and cabinet on one PC) |
+| `MATCH-NET pairs` | for each pair, the address each side dials: `local same-NAT` when both global IPs are equal (exe rule §2.4), else `global` |
+| `drop reason` | `matching timeout`, `cancelled by node N`, `stopped polling (stale)`, `replaced by re-entry`, `same cabinet entered again` |
+
+How to read it:
+* **MISMATCH is expected** when the server is not on the same network path as the players' STUN, e.g. a LAN or
+  overlay card server with an internet STUN. It's a problem when *some* players match `src` and others don't: that's
+  the mixed overlay/internet case (§5). Each (source, global) pair is warned about only once.
+* **`class=stun-missing`**: STUN unreachable from the game socket (firewall, wrong `StunHost`, coturn down). Peers
+  get no usable global address.
+* **`local same-NAT` pair with a wrong `local`** (e.g. `172.x` Hyper-V or a `vEthernet` IP): those two players will
+  dial an address that isn't theirs. Fix the bound adapter (§3 step 1).
+* **Two players with the same global *and* same local**: two instances on one PC/IP. They will dial themselves.
+* **`NET-WARN register-pcb ... loopback`**: `MatchUrl` / `StunHost` in `server.json` is `127.0.0.1`/`localhost`, but
+  a remote cabinet registered. Set it to an address the cabinets can reach.
+* **Matches form but battles never start**, with clean NET lines → UDP is blocked between the dialled addresses
+  (firewall §3, symmetric NAT/CGNAT §3 step 6, or MTU).
+
+### 6.1 Server-side mitigations still open
 | Idea | Effort | Value |
 |---|---|---|
-| **Log per entry**: HTTP source IP, client global ip:port, local ip:port, NAT mapping/filtering (no card ids) | small | biggest debugging win: spots wrong local IPs, mixed overlay/internet, STUN failures |
-| **Warn on mismatch**: global IP ≠ HTTP source IP (when the server is on the same network as STUN) → "wrong adapter / mixed setup" | small | turns a silent battle failure into a log line |
+| ~~Log per entry~~ / ~~warn on mismatch~~ | — | **done** (above) |
 | **Keep overlay and internet players in separate buckets** (e.g. global IP in 100.64/10, 26/8, 25/8 or a configured overlay CIDR) | small | prevents the mixed case in §5 |
 | **Advertised-IP override** per pcb_serial (config) or "use HTTP source IP as global when STUN failed (0.0.0.0)" | small-medium | rescues broken STUN; risky if the source IP is a proxy |
 | **NAT-aware pairing**: avoid symmetric↔symmetric (mapping/filtering values), fall back after a wait | medium | only useful with a 2-IP STUN |

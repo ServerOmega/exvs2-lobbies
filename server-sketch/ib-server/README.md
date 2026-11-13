@@ -28,7 +28,7 @@ git am /path/to/exvs2-matchmaking/server-sketch/ib-server/online-matchmaking.pat
 dotnet publish Server-Infinite -c Release -r win-x64
 # or Linux server:
 dotnet build Server-Infinite -c Release -p:LinuxHost=true -o out
-# matchmaker unit tests (25 tests):
+# matchmaker unit tests (29 tests):
 dotnet test Tests/Matchmaking.Tests
 ```
 Copy your existing `ServerInfinite.db` next to the new build if you want to keep cards; the new migration
@@ -50,8 +50,12 @@ In `Configurations/server.json` under `CardServerConfig` → `OnlineMatching`:
 | `NodeIdStateFile` / `FirstNodeId` | `mms_nodeids.json` / `1000` | node ids are never reused |
 | `ClassMatchScheduleMode` | `Both` | `Both` / `Hours` / `UnixTime` (upstream) schedule rows in LoadClassMatch |
 | `PersistClassMatchResult` | `true` | store ranked results from SaveVsmOnResult |
+| `VerboseLog` | `false` | also log every CheckMatching poll (address/NAT lines are always logged once per entry / match) |
 
-Environment variables work too: `CardServerConfig__OnlineMatching__Enabled=true`.
+Environment variables work too and win over `server.json`: `CardServerConfig__OnlineMatching__Enabled=true`.
+
+Network log lines (`NET ...`, `NET-WARN ...`, `MATCH-NET ...`, `drop ... reason=`) are explained in
+[analysis/networking-issues.md §6](../../analysis/networking-issues.md#6-reading-the-network-log).
 
 ## Run the pieces
 1. **STUN**: `turnserver -c ../coturn/turnserver.conf` (UDP 3478 open; set `external-ip`).
