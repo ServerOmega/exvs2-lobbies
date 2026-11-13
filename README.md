@@ -21,7 +21,7 @@ included. You must already have a copy of the game; this repo is notes, analysis
 
 | Area | What's here | Works? |
 |---|---|---|
-| Research | `analysis/` — WAN/MMS + STUN protocol notes, LAN 16-slot limit, server design | Findings from static analysis; not proven in a live match |
+| Research | `analysis/` — WAN/MMS + STUN protocol notes, LAN 16-slot limit, server design, [networking issues (Windows/NAT/VPN)](analysis/networking-issues.md) | Findings from static analysis; not proven in a live match |
 | Python MMS sketch | `server-sketch/python/` — stdlib HTTP protobuf prototype + fake cabinets | Exercised against simulated cabinets only, **not** against the game |
 | C# handler sketch | `server-sketch/csharp/` — IB-Server-style handlers + RegisterPcb notes | **Uncompiled**, not wired into a running server |
 | Card server patch (step 3) | `server-sketch/ib-server/` — patch for Chiang-17/EXVS2-IB-Server: RegisterPcb MATCH+STUN, in-process matchmaker, IB class-match tables, ranked result storage | Builds (Linux + win-x64), unit + fake-cabinet tests pass; **not tested with the game** |
