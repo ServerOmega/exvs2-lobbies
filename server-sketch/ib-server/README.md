@@ -18,6 +18,8 @@ Upstream has **no license**, so it is not forked or redistributed here — only 
 (`online-matchmaking.patch`, a `git format-patch 7f4b280..online-matchmaking` of the local branch; 7 commits).
 Full change list and config reference: `ONLINE_MATCHMAKING.md` inside the patch.
 
+Step-by-step hosting / player guide: [`docs/SETUP.md`](../../docs/SETUP.md).
+
 ## Build
 Needs the .NET 9 SDK (`yay -S dotnet-sdk` on Arch; on Windows install .NET 9 SDK).
 ```bash

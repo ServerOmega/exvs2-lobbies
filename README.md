@@ -8,6 +8,8 @@
 > PC (also without the matchmaker — see [the test report](analysis/real-game-test-2026-11-13.md)).
 > The Python MMS and the `server-sketch/csharp` handlers are still untested sketches.
 
+## ➡️ [Setup guide: host a matchmaking server / connect your cabinet](docs/SETUP.md)
+
 **Goal: one universal matchmaking server that everyone connects to.** Players at a store with an LM, players
 without an LM, and players at many different LMs all use the same server and can match each other wherever the
 network allows. See [analysis/lm-and-online.md](analysis/lm-and-online.md).
@@ -66,6 +68,7 @@ Other results, documented in `analysis/matchmaking.md`:
 analysis/            Matchmaking research and the extracted MMS .proto
 notes/               Lab index (kept as written; some older notes are still missing)
 server-sketch/       Python prototype, C# sketch, coturn example, ib-server card-server patch
+docs/SETUP.md        Step-by-step: hosting the server, connecting a cabinet, troubleshooting
 tools/re/            Reverse-engineering helper scripts (no game binary, no caches)
 ```
 
