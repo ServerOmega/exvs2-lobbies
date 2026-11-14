@@ -1,0 +1,24 @@
+# Optional: run the server in the background and start it at boot (systemd).
+# 1. Edit the two paths below (where your server-linux folder is) and the user name.
+# 2. sudo cp linux/exvs2-matchmaking.service /etc/systemd/system/
+#    sudo systemctl daemon-reload
+#    sudo systemctl enable --now exvs2-matchmaking
+# 3. Log:  journalctl -u exvs2-matchmaking -f     (and server-linux/Logs/)
+#    Stop: sudo systemctl stop exvs2-matchmaking
+[Unit]
+Description=EXVS2 matchmaking server (card server + matchmaker + STUN)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=exvs2
+WorkingDirectory=/home/exvs2/exvs2-matchmaking/server-linux
+ExecStart=/home/exvs2/exvs2-matchmaking/server-linux/Server-Infinite
+Restart=on-failure
+RestartSec=5
+# Never run it as root. Ports above 1024 (28080, 3478, 3479) need no special rights.
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

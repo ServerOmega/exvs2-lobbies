@@ -14,6 +14,11 @@ All config keys below are under `CardServerConfig` → `OnlineMatching` in `Conf
 ## Part A — Hosting the matchmaking server
 
 ### A1. Build
+**Easiest:** download the [pre-release package](https://github.com/ServerOmega/exvs2-matchmaking/releases) and run
+`1-Build-Server.bat` → `2-Configure.bat` → `3-Start-Server.bat` (Linux: `linux/*.sh`); it does the steps below for you.
+Public server / VPN / VPS guide: [`release/package/Public-Server.txt`](../release/package/Public-Server.txt).
+
+Manual build:
 Needs the **.NET 9 SDK** and git (Windows or Linux can build the Windows exe).
 ```bash
 git clone https://github.com/Chiang-17/EXVS2-IB-Server && cd EXVS2-IB-Server
@@ -29,7 +34,7 @@ dotnet build Server-Infinite -c Release -p:LinuxHost=true -o out-linux
 
 dotnet test Tests/Matchmaking.Tests      # optional: matchmaker unit tests
 ```
-No pre-built download is published; build it yourself. If you already run an IB card server, copy its
+No pre-built server exe is published (upstream has no license); the package above builds it on your PC. If you already run an IB card server, copy its
 `ServerInfinite.db` next to the new exe to keep your cards (**back it up first**; a migration adds one column).
 
 ### A2. Configure `Configurations/server.json` → `CardServerConfig.OnlineMatching`

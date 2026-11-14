@@ -1,0 +1,71 @@
+EXVS2 Infinite Boost - online matchmaking server  (v0.1.0-pre, EXPERIMENTAL TEST BUILD)
+=====================================================================================
+
+What is this?
+  A card server for EXVS2 Infinite Boost that can also do ONLINE MATCHMAKING:
+  players on different PCs (different homes, LM or no LM) search an online mode and get put in the same match.
+  It is the community card server "EXVS2-IB-Server" v1.2.0 plus our matchmaking add-on.
+  It does NOT need a GPU, the game, or an LM. It's a small program that can run on any Windows 10/11 PC
+  or a Linux PC/VPS.
+
+  You must already have your own working copy of the game. Nothing in here contains game files.
+
+Why do I have to "build" it?
+  The original card server has no license, so we are not allowed to hand out its program.
+  Step 1 downloads it straight from its author's GitHub page, adds our changes, and builds it on your PC.
+  It's automatic - one double-click, about 5 minutes the first time, ~1 GB of disk space.
+
+-------------------------------------------------------------------------------------
+QUICK START (Windows)
+-------------------------------------------------------------------------------------
+  0. Put this folder somewhere simple, e.g.  C:\exvs2-server   (not inside the game folder).
+
+  1. Double-click  1-Build-Server.bat
+       - Needs internet. Downloads .NET 9 and git into this folder if you don't have them (no admin needed).
+       - At the end it asks for your official Server-Infinite v1.2.0 folder: give it if you have one,
+         so the card website gets its pictures (and, if you want, a COPY of your card database).
+         Just press Enter to skip.
+
+  2. Double-click  2-Configure.bat   and answer the questions:
+       "1 = HOST" : this PC is the matchmaking server other players connect to.
+                    It asks which address players use to reach you: LAN IP, VPN IP or public IP.
+                    It can add the Windows Firewall rules for you (asks for admin).
+       "2 = PLAY" : you play on SOMEONE ELSE's matchmaking server, and keep your cards on this PC.
+                    Type the server address the host gave you. Use this if you play with SnowLauncher.
+
+  3. Double-click  3-Start-Server.bat   - keep that window open while people play. Close it to stop.
+
+  4. Set up the game:  read  Connect-Your-Game.txt
+
+-------------------------------------------------------------------------------------
+QUICK START (Linux PC or rented VPS - no GPU needed)
+-------------------------------------------------------------------------------------
+     sudo apt install curl unzip git python3        (Debian/Ubuntu; use dnf/pacman elsewhere)
+     ./linux/build-server.sh
+     ./linux/configure.sh          (asks for the public or VPN IP)
+     ./linux/start-server.sh
+  Details, firewall commands and running it at boot (systemd): Public-Server.txt, section "Linux VPS".
+
+-------------------------------------------------------------------------------------
+Other files
+-------------------------------------------------------------------------------------
+  Connect-Your-Game.txt   how players point their game at a server
+  Public-Server.txt       hosting for people outside your home: port forwarding, VPN, VPS,
+                          and exactly where the public / VPN IP goes
+  Troubleshooting.txt     problems, log messages, KNOWN ISSUES
+  scripts\                the PowerShell scripts the .bat files run (you can read them)
+  linux\                  the Linux scripts + a systemd service example
+  files\online-matchmaking.patch   our changes to the card server (source code, readable)
+
+  After building:  server\        the ready server (Server-Infinite.exe, Configurations\, wwwroot\)
+                   server\Configurations\server.json   all settings (2-Configure.bat edits it)
+                   server\ServerInfinite.db            the card database - BACK IT UP now and then
+                   server\Logs\                        log files
+  build\ and tools\ are only needed for building; you can delete them afterwards (step 1 re-creates them).
+
+Updating later: download the new package, copy your old  server\  folder into it, then run 1-Build-Server.bat.
+  Your settings and card database are kept.
+
+Project page, full docs and source: https://github.com/ServerOmega/exvs2-matchmaking
+Card server by its original authors: https://github.com/Chiang-17/EXVS2-IB-Server  (free software -
+if you paid for it, you were scammed).

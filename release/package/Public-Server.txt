@@ -1,0 +1,139 @@
+Hosting a public matchmaking server (for players outside your home)
+====================================================================
+
+What you need
+-------------
+  - A computer that stays on while people play: your own Windows 10/11 PC, a Linux PC, or a rented VPS.
+    No GPU, no game, no LM needed. 1-2 CPU cores, 1-2 GB RAM and ~1 GB disk are plenty.
+  - A way for players to reach it - pick ONE:
+      Option 1  your home internet + port forwarding on your router (needs a real public IP, see below)
+      Option 2  a VPN everyone joins (Tailscale, ZeroTier, Radmin VPN, N2N, Hamachi) - no port forwarding
+      Option 3  a rented server (VPS) - it has its own public IP
+  - This package (1-Build-Server -> 2-Configure -> 3-Start-Server, or the linux\ scripts).
+
+Ports
+-----
+  Open / forward these to the SERVER:
+      TCP 28080         card server + matchmaker (/match) + card website (WebUI). Same port for all three.
+      UDP 3478 and 3479 the built-in STUN server (players' games test their NAT with it)
+  NOT on the server (these are between the players' own PCs, each player handles them):
+      UDP 48000 (+ a few)   the battle itself, game to game (see Connect-Your-Game.txt, part C)
+  NEVER forward:
+      UDP 49000         the LM's local broadcast - it must stay inside each home
+  Keep 28080: the game only talks to its card server on port 28080. (A different port only works for
+  players who use their own local card server, "2 = PLAY" in 2-Configure.)
+
+
+WHERE the public IP / VPN IP goes  (this is the important part)
+---------------------------------
+  On the SERVER, in  server\Configurations\server.json  ->  "CardServerConfig" -> "OnlineMatching":
+
+      "Enabled": true,            <- online matching on
+      "StunHost": "203.0.113.10", <- THE ADDRESS PLAYERS USE TO REACH YOU (public IP, or your VPN IP).
+                                     Must be an IP (numbers), not a domain name.
+      "StunPort": 3478,           <- STUN also uses 3479 (StunPort + 1)
+      "BuiltinStun": true,        <- run STUN inside this server
+      "MatchUrl": ""              <- leave EMPTY. Then each game is told "http://<the address it used to
+                                     reach this server>/match", which is automatically right.
+
+  2-Configure.bat ("1 = HOST") / linux/configure.sh write exactly these for you. It shows this PC's
+  addresses (LAN + VPN adapters) and can look up your public IP; you can also type any IP.
+
+  The listen port is in  server\Configurations\kestrel.json :  "Url": "http://0.0.0.0:28080"
+  (0.0.0.0 = listen on every network adapter. Leave it like that.)
+
+  Behind a router / NAT (your public IP is not on this PC):  that's fine. The server sees the public
+  StunHost is not one of its own addresses and listens for STUN on all adapters (0.0.0.0); your router's
+  port forwarding brings the packets in. When StunHost IS one of the PC's own addresses (a VPN IP, a LAN IP,
+  or a VPS whose public IP is on its adapter), STUN listens on exactly that address. (Checked in the code
+  and tested on Linux; the log line at start says "STUN built-in server on UDP 3478 (+alt 3479) ...".)
+
+  On the PLAYERS' side, the same address goes:
+      - Way 1 (card server = your server):  POC config.ini   Server = 203.0.113.10
+      - Way 2 (own local card server, e.g. SnowLauncher users): 2-Configure.bat "2 = PLAY" and type
+        203.0.113.10 -> MatchUrl http://203.0.113.10:28080/match, StunHost 203.0.113.10, BuiltinStun false.
+  Details: Connect-Your-Game.txt.
+
+
+Option 1: your home internet + port forwarding
+-----------------------------------------------
+  1. Give the server PC a fixed LAN IP (router's DHCP reservation), e.g. 192.168.1.50.
+  2. In the router: forward TCP 28080 and UDP 3478-3479 to 192.168.1.50.
+  3. Find your public IP (2-Configure can look it up, or visit a "what is my IP" site).
+     Check it is a REAL public IP: if your router's WAN IP is different, or starts with 100.64-100.127,
+     10., 172.16-31. or 192.168., you're behind your ISP's CGNAT and port forwarding can't work -> use Option 2 or 3.
+  4. 2-Configure.bat -> 1 = HOST -> pick/type the PUBLIC IP. Allow the firewall rules.
+  5. Home IPs can change. If yours changes, run 2-Configure again and tell players the new IP.
+     (Domain names / dynamic DNS can't be used for StunHost - it must be an IP.)
+  Playing on the server PC yourself: your own game reaches the server at 127.0.0.1, but is told to use your
+  public IP for STUN. That needs "NAT loopback / hairpin" on your router. If your own searches get stuck,
+  play from another PC or use a VPN (Option 2). (Untested.)
+
+Option 2: a VPN (Tailscale / ZeroTier / Radmin VPN / N2N / Hamachi)
+-------------------------------------------------------------------
+  - Everyone (server + every player) joins the SAME VPN network. No port forwarding needed.
+  - The server's VPN IP goes in the same places as a public IP: StunHost (server side) and Server= /
+    "2 = PLAY" address (player side). 2-Configure lists your VPN adapter's IP - pick it.
+  - Players set  IpAddress = <their own VPN IP>  in the POC config.ini so the game uses the VPN adapter
+    (put a # in front of the InterfaceName line - only one of the two may be active).
+  - Allow the ports in the server's firewall anyway (2-Configure offers it); mark the VPN adapter as a
+    Private network in Windows.
+  - Don't mix: players on the VPN and players on the plain internet can't reach each other, so the server
+    never matches them together (it tells them apart by address range: Radmin 26.x, Hamachi 25.x,
+    Tailscale 100.64-127.x, LAN/private ranges, internet; setting NetworkRealms in server.json).
+  - Tailscale usually gets the most direct connections; Radmin is what the community already uses for LM play.
+
+Option 3: a rented server (VPS)
+-------------------------------
+  - Any cheap VPS works (no GPU). Linux is cheaper; Windows VPS works with the normal .bat steps.
+  - In the provider's control panel ("firewall" / "security group") allow inbound TCP 28080 and UDP 3478-3479.
+  - StunHost = the VPS's public IP. Players use that IP (Way 1 or Way 2).
+  - Pick a location close to your players: the matchmaker is not latency-critical, but the battle is P2P
+    between players, so the VPS location doesn't affect battle lag.
+
+Linux VPS
+---------
+  Tested on Debian 13 x64 (2026-11-14): build, start, card website, matchmaker and STUN all work.
+  1. Install the basics and copy this folder over (scp/sftp, or download the zip with wget and unzip):
+        sudo apt update && sudo apt install -y curl unzip git python3
+  2. Build (downloads a private .NET 9 into tools/, no root):   ./linux/build-server.sh
+     The server lands in  server-linux/  (Server-Infinite + Configurations/ + wwwroot/).
+     For the card-website pictures: OFFICIAL_SERVER_FOLDER=/path/to/official/Server-Infinite ./linux/build-server.sh
+  3. Configure:   ./linux/configure.sh             (asks; or: ./linux/configure.sh --ip <public IP> --yes)
+  4. Firewall (ufw example) - also open the same ports in the provider's panel:
+        sudo ufw allow OpenSSH
+        sudo ufw allow 28080/tcp
+        sudo ufw allow 3478:3479/udp
+        sudo ufw enable
+     firewalld:  sudo firewall-cmd --permanent --add-port=28080/tcp --add-port=3478-3479/udp && sudo firewall-cmd --reload
+  5. Try it:      ./linux/start-server.sh          (Ctrl+C stops it; logs in server-linux/Logs/)
+     Check from your PC: open  http://<VPS IP>:28080/  in a browser - the card website should load.
+  6. Run it in the background and at boot: edit the paths/user in  linux/exvs2-matchmaking.service, then
+        sudo cp linux/exvs2-matchmaking.service /etc/systemd/system/
+        sudo systemctl daemon-reload && sudo systemctl enable --now exvs2-matchmaking
+        journalctl -u exvs2-matchmaking -f
+     Run it as a normal user, never as root.
+  ARM VPS (e.g. Ampere): RUNTIME=linux-arm64 ./linux/build-server.sh  (untested).
+
+Security
+--------
+  - Open ONLY TCP 28080 and UDP 3478-3479. Nothing else is needed. Never forward UDP 49000 or your game PC.
+  - Port 28080 also serves the card website (WebUI). Anyone who can reach the server can open it and can
+    register a card on it. Players log in there with their card's access code - tell players to keep
+    their access code private and never post it.
+  - The server is plain HTTP (no encryption), like the original card server. Don't reuse passwords for anything.
+  - Back up  ServerInfinite.db  (the card database) regularly; stop the server first for a clean copy.
+  - For a group of friends, a VPN (Option 2) is the safest: nothing is exposed to the whole internet.
+  - The server logs players' IP addresses and NAT types (no card numbers or access codes). Keep logs private.
+  - No passwords or secrets are needed for any of this; don't put any in server.json.
+
+Check it works
+--------------
+  In the server window / log:
+    "STUN built-in server on UDP 3478 (+alt 3479)"   at start
+    "NET register-pcb src=<player IP> -> match=... stun=<your IP>:3478"   a player's game connected
+    "NET-WARN register-pcb ... loopback"   a remote player was given 127.0.0.1 -> set StunHost to your public/VPN IP
+    "NET entry node=... class=..."  a player is searching ("class=stun-missing" = their STUN test failed:
+                                    UDP 3478-3479 not open/forwarded, or StunHost wrong)
+    "MATCH room=..."                a match formed
+  More: Troubleshooting.txt

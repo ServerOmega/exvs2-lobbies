@@ -1,0 +1,83 @@
+Connecting your game to a matchmaking server
+============================================
+
+Every player needs 3 things:
+  A. the game talking to a card server that has online matching turned on,
+  B. the game set to ONLINE matching (battleMode 0),
+  C. the network open for the battle itself (game to game, UDP).
+
+The host gives you ONE address: the matchmaking server's IP (public IP, or VPN IP if your group uses a VPN).
+Example used below: 203.0.113.10
+
+
+A. Point the game at a card server  -  pick ONE way
+----------------------------------------------------
+Way 1: Use the host's server as your card server  (simplest; your cards live on the host's server)
+  In the game's POC config.ini (in your game folder), section [config]:
+      Server = 203.0.113.10
+  Only the IP. No "http://", no port. The game talks to the card server on port 28080, so the host must
+  keep the default port 28080.
+  Your old cards are NOT on the host's server: you start fresh there (or the host imports your database).
+
+Way 2: Keep your own card server on your PC, match on the host's server  (cards stay with you)
+  Use this if you play with SnowLauncher: SnowLauncher ignores its Server= setting and the game always
+  talks to 127.0.0.1:28080 (this PC).
+    1. On YOUR PC: run 1-Build-Server.bat, then 2-Configure.bat and choose "2 = PLAY",
+       and type the host's address (203.0.113.10). Then 3-Start-Server.bat.
+       This writes, in server\Configurations\server.json -> CardServerConfig -> OnlineMatching:
+           "Enabled": true,
+           "MatchUrl": "http://203.0.113.10:28080/match",     <- the host's matchmaker
+           "StunHost": "203.0.113.10",                         <- the host's STUN
+           "BuiltinStun": false
+    2. Your game keeps  Server = 127.0.0.1  (POC config.ini default) - SnowLauncher does that by itself.
+    3. Close any OTHER card server on your PC first (only one program can use port 28080),
+       e.g. the official Server.exe. Your cards: copy ServerInfinite.db into server\ (step 1 can do it for you).
+  Results and cards are saved on YOUR card server; only the matching happens on the host's server.
+  (Tested 2026-11-13 on one PC with two card servers.)
+
+  Keep a backup of your launcher / card settings: SnowLauncher once wiped the AccessCode in its ini during testing.
+
+
+B. Switch the game to ONLINE matching  (battleMode 0)
+------------------------------------------------------
+  The game only uses the online matchmaker when the ACTIVE setting entry in  testmode_pcb.json  has
+      battleMode: 0
+  Any other value = in-store / LM matching only.
+    - Close the game first and BACK UP testmode_pcb.json.
+    - Change it with a testmode editor tool (the project used its own svd1.py tool; it is not in this package).
+    - Never use "EXIT & SAVE" in the in-game test menu, and don't edit the file while the game runs.
+  How to check: start the game, pick an online mode; the server log shows "MMS IssueNodeId" and
+  "NET entry ..." for your cabinet. If you only see "NET register-pcb", battleMode isn't 0.
+  The SERVER needs no LM. On your side keep your usual setup: if your game normally runs with an LM, keep the
+  LM running (in our tests each cabinet had its own LM running; playing online with the LM closed is untested).
+
+
+C. Network for the battle itself
+--------------------------------
+  The matchmaking server only introduces players. The battle runs DIRECTLY between the players' games (P2P, UDP).
+    - Firewall: allow the game exe (and your launcher) in Windows Firewall / TinyWall. With TinyWall, every
+      copy of the game folder is a different exe path and needs its own entry.
+    - Home router: the game's battle port is UDP 48000 (plus a small per-terminal offset). It has no UPnP.
+      If matches form but the battle never starts, forward UDP 48000 and the next few ports (e.g. 48000-48010)
+      to your PC, or everyone joins the same VPN (Tailscale / ZeroTier / Radmin / N2N).
+    - NEVER forward UDP 49000 - that's the LM's local broadcast, it must stay in your home.
+    - With a VPN: set the POC config.ini  IpAddress = <your own VPN IP>  (or InterfaceName = <VPN adapter
+      name>) so the game uses the VPN adapter (only one of the two may be active - put # before the other). Everyone in the group must be on the same VPN network,
+      and the host's VPN IP is the server address.
+
+
+Then play
+---------
+  1. Start the game, insert your card, pick an online mode. EVERYONE must pick the SAME mode to meet
+     (each mode has its own queue).
+  2. 4 players searching = a 2v2 right away. With 2-3 players, a 1v1 / 2v1 (CPU partners) starts after
+     ~15 seconds (the host's FillAfterSeconds setting).
+  3. Cancelling the search in the game works.
+
+Online tag (play as a team with a chosen partner) - UNTESTED in the real game, both partners must use the
+SAME card server (Way 1, or both on the same PC):
+  1. Your partner opens the card website  http://<card server IP>:28080/  , logs in with their card,
+     opens Customize -> Teams and sends you "Your User ID" and "Your Invitation Code" (privately; it works once).
+  2. You open your own Customize -> Teams, enter them under Add Team, press ADD.
+  3. Both re-insert your cards, pick online mode -> team sortie -> online tag, choose the team,
+     and search at about the same time (each waits up to 90 s for the other).

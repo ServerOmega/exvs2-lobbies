@@ -1,0 +1,77 @@
+Troubleshooting
+===============
+
+Building (1-Build-Server.bat / linux/build-server.sh)
+------------------------------------------------------
+  "running scripts is disabled"     use the .bat file (it runs PowerShell with -ExecutionPolicy Bypass).
+  Download errors                   check your internet; antivirus/proxy may block github.com or dot.net. Run it again.
+  "The patch does not apply"        the downloaded source changed - please report it on the project page.
+  Build errors about paths          move the folder to a short, English-only path like C:\exvs2-server.
+  "The server is running"           close the 3-Start-Server window (or stop the service) before rebuilding.
+  Windows SmartScreen on the .bat   "More info" -> "Run anyway". The scripts are plain text; you can read them first.
+
+Starting (3-Start-Server.bat / linux/start-server.sh)
+------------------------------------------------------
+  Window closes / "address already in use"   another card server already uses port 28080 (e.g. the official
+                                     Server.exe). Close it - only one program can use the port.
+  "STUN built-in server could not bind UDP 3478"   another program (another copy of this server, coturn) uses it.
+  A notice window for 5 seconds      normal (the original card server's anti-scam notice). Windows only.
+  Linux: "Couldn't find a valid ICU package"   start-server.sh handles this; or install libicu.
+  Card website has no pictures       the pictures aren't in the source code; re-run step 1 and give it your
+                                     official Server-Infinite v1.2.0 folder.
+
+Players can't match - read the server log (window or Logs\log-<date>.txt)
+---------------------------------------------------------------------------
+  No "NET register-pcb" line for the player
+      -> their game isn't talking to this card server: wrong Server= address, port 28080 blocked/not forwarded,
+         firewall, or (SnowLauncher) they need their own local card server ("2 = PLAY").
+  "NET register-pcb" but no "MMS IssueNodeId" / "NET entry"
+      -> battleMode isn't 0 in the active entry of testmode_pcb.json, or "Enabled" is false on the card server
+         that player uses.
+  "NET-WARN register-pcb ... loopback"
+      -> a remote player was given 127.0.0.1: set StunHost to your public/VPN IP (2-Configure.bat).
+  "NET entry ... class=stun-missing" / stuck on searching
+      -> STUN unreachable: UDP 3478-3479 not opened/forwarded, or StunHost is not the address players reach.
+  "entry ..." lines but never "MATCH"
+      -> players picked different modes (each mode is its own queue), only one player searching, or players
+         on different networks (VPN vs internet) - they are never matched together.
+  "MATCH room=..." but the battle never starts
+      -> the game-to-game UDP is blocked: allow the game exe in the firewall / TinyWall, forward UDP 48000+
+         or use a VPN. Strict / CGNAT internet on BOTH sides can't connect directly (there is no relay).
+  "drop nodes=[..] reason=..."       a player left the search (cancel, timeout, stopped responding).
+
+  More log lines: https://github.com/ServerOmega/exvs2-matchmaking/blob/main/analysis/networking-issues.md
+
+Online tag
+----------
+  No team to pick in the game  -> make the team on the card website first (Customize -> Teams), then re-insert
+                                  the card. If the list stays empty, the host can try "TagStatus": 1 in the
+                                  "OnlineTag" section of server.json (restart the server).
+  Both search but never pair   -> both partners must use the SAME card server and search within ~90 s.
+
+Settings reference (server\Configurations\server.json -> CardServerConfig)
+--------------------------------------------------------------------------
+  OnlineMatching:  Enabled, MatchUrl, StunHost, StunPort, BuiltinStun, FillAfterSeconds (15), AllowPartialRooms,
+                   CpuStandInSeats (keep false), PollingIntervalSeconds, StaleAfterSeconds, NetworkRealms, VerboseLog ...
+  OnlineTag:       SendTagTeams, TagStatus, MaxTeams, OneTimeInviteCode
+  Full list: https://github.com/ServerOmega/exvs2-matchmaking/blob/main/server-sketch/ib-server/README.md#configure
+  Restart the server after editing. Keep a copy of the file before editing by hand.
+
+KNOWN ISSUES (this is an early test build)
+------------------------------------------
+  1. Results screen hangs after a versus match when BOTH cabinets run on ONE PC. It also happens in local
+     LM mode without this server, so it's most likely two copies of the game on one PC getting in each other's
+     way. The games recover by themselves after a while. Not seen in solo matches vs CPU. Matches between
+     separate PCs are not tested yet. (Under investigation.)
+  2. Only tested with two cabinets on one Windows PC (2026-11-13). Matching between different homes /
+     over the internet / over a VPN is NOT tested yet - you are the testers. Please report what happens.
+  3. Online tag and partner recruit are built but UNTESTED in the real game. Both partners must use the
+     same card server (player IDs are per server).
+  4. The matchmaker keeps the waiting list in memory: restarting the server drops players who are searching.
+  5. No relay: two players who both have strict/CGNAT internet may never connect - use a VPN.
+  6. Ranked (class match) results are trusted from the game; ranked pairing is by class and level only.
+  7. The Linux build was tested on a Linux PC with fake cabinets (no real game against it yet).
+  8. Switching the game to online (battleMode 0) needs a testmode editor that is not included.
+
+Reporting a problem: https://github.com/ServerOmega/exvs2-matchmaking/issues - include the server log lines
+around the problem. Remove access codes / card numbers / BootToken before posting anything.
