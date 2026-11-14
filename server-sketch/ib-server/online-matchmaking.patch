@@ -1,7 +1,7 @@
 From 46f2cf5f59c4858078e5c4d44e3d60923d7e15c1 Mon Sep 17 00:00:00 2001
 From: ServerOmega <69215510+ServerOmega@users.noreply.github.com>
 Date: Fri, 13 Nov 2026 07:32:41 -0800
-Subject: [PATCH 1/7] Online matchmaking (experimental): STUN+MMS in
+Subject: [PATCH 01/11] Online matchmaking (experimental): STUN+MMS in
  RegisterPcb, Entry/Check/Cancel matchmaker, IB class-match tables, ranked
  result persistence, Linux build option; load-test fixes
 
@@ -2328,7 +2328,7 @@ index 0000000..3b81d9a
 From 59a8ceaba76b4a9c00743b17e00ecb7abdc89ed3 Mon Sep 17 00:00:00 2001
 From: ServerOmega <69215510+ServerOmega@users.noreply.github.com>
 Date: Fri, 13 Nov 2026 14:24:50 -0800
-Subject: [PATCH 2/7] RegisterCard: fall back to pending card by access code
+Subject: [PATCH 02/11] RegisterCard: fall back to pending card by access code
  when SessionId is empty (POC clients)
 
 ---
@@ -2366,7 +2366,7 @@ index da8f5ea..3029cb0 100644
 From c10e1826eccd88272306b1f2f71b16126626baba Mon Sep 17 00:00:00 2001
 From: ServerOmega <69215510+ServerOmega@users.noreply.github.com>
 Date: Fri, 13 Nov 2026 14:38:55 -0800
-Subject: [PATCH 3/7] Built-in RFC 5389/5780 STUN server (BuiltinStun),
+Subject: [PATCH 03/11] Built-in RFC 5389/5780 STUN server (BuiltinStun),
  single-IP or two-IP
 
 ---
@@ -2598,7 +2598,7 @@ index bda49e2..a9c56ab 100644
 From 9295ed8babeb0d6e6651d2c6790f26f1b85b6061 Mon Sep 17 00:00:00 2001
 From: ServerOmega <69215510+ServerOmega@users.noreply.github.com>
 Date: Fri, 13 Nov 2026 18:53:25 -0800
-Subject: [PATCH 4/7] Built-in STUN: bind to StunHost when it is a local
+Subject: [PATCH 04/11] Built-in STUN: bind to StunHost when it is a local
  address
 
 On a multi-homed Windows PC (Ethernet + N2N/VPN adapter) a socket bound to
@@ -2657,7 +2657,7 @@ index 872d2b3..4ef4c22 100644
 From 060e241c15c6a6ede6d3c0a9e267f1122e06afdd Mon Sep 17 00:00:00 2001
 From: ServerOmega <69215510+ServerOmega@users.noreply.github.com>
 Date: Fri, 13 Nov 2026 18:53:25 -0800
-Subject: [PATCH 5/7] SaveBadge: clamp badge exp at 0
+Subject: [PATCH 05/11] SaveBadge: clamp badge exp at 0
 
 A lost online match reported a negative badge point and the badge exp went
 0 -> -20 in the real game (2026-11-13). Clamp the stored value to >= 0.
@@ -2685,8 +2685,8 @@ index 90e35a8..5fad533 100644
 From a6cdb59e736f93bbb922a85b637ee0b9888254fc Mon Sep 17 00:00:00 2001
 From: ServerOmega <69215510+ServerOmega@users.noreply.github.com>
 Date: Fri, 13 Nov 2026 18:53:25 -0800
-Subject: [PATCH 6/7] Matchmaker: optional CPU stand-in seats; FillAfterSeconds
- default 15
+Subject: [PATCH 06/11] Matchmaker: optional CPU stand-in seats;
+ FillAfterSeconds default 15
 
 CpuStandInSeats (default false, experimental): in a short-handed room each
 human's empty side seat is listed as a CPU client (PCB00000NPC, property N,
@@ -3036,7 +3036,7 @@ index 3b81d9a..b5b7cbb 100644
 From 679ae7d833acb2a84183f4844568c34134ac5adf Mon Sep 17 00:00:00 2001
 From: ServerOmega <69215510+ServerOmega@users.noreply.github.com>
 Date: Fri, 13 Nov 2026 18:53:49 -0800
-Subject: [PATCH 7/7] ONLINE_MATCHMAKING.md: first real-game results
+Subject: [PATCH 07/11] ONLINE_MATCHMAKING.md: first real-game results
  (2026-11-13), BuiltinStun / CpuStandInSeats / FillAfterSeconds config
 
 ---
@@ -3103,6 +3103,1115 @@ index 2a72884..65ee897 100644
  ## Known gaps / risks
  * CheckMatching / CancelMatching are not authenticated: anyone who knows a node id can cancel that entry.
  * Malformed protobuf bodies on `/match` get HTTP 500 from the model binder (the real cabinet never sends them).
+-- 
+2.47.3
+
+
+From 4ecdd01d345a51c3a5560a882691a6e492be2c03 Mon Sep 17 00:00:00 2001
+From: ServerOmega <69215510+ServerOmega@users.noreply.github.com>
+Date: Fri, 13 Nov 2026 19:08:01 -0800
+Subject: [PATCH 08/11] Matchmaker: pair worlds for online tag (5, pair key)
+ and partner recruit (21 casual, 22 by class)
+
+Exactly two solo cabinets per room, both group 0, fixed order (world 5: lower am_id = game's leader first;
+21/22: lower node id first). Never short rooms or CPU stand-ins; cabinet timeouts (90 s tag, 150 s recruit);
+pair key 0 never pairs; NG lists, same card / same cabinet respected; team entries in pair worlds refused.
+A finished pair room is no longer replayed to a team entry of another world with the same node + apply_id.
+Tests: 15 new (OnlineTagTests), incl. two tag pairs -> leaders' team entries -> 2v2.
+---
+ Server-Infinite/Matchmaking/Matchmaker.cs  |  91 ++++++-
+ Tests/Matchmaking.Tests/MatchmakerTests.cs |   4 +-
+ Tests/Matchmaking.Tests/OnlineTagTests.cs  | 273 +++++++++++++++++++++
+ 3 files changed, 361 insertions(+), 7 deletions(-)
+ create mode 100644 Tests/Matchmaking.Tests/OnlineTagTests.cs
+
+diff --git a/Server-Infinite/Matchmaking/Matchmaker.cs b/Server-Infinite/Matchmaking/Matchmaker.cs
+index b8aa0ed..cbf5a79 100644
+--- a/Server-Infinite/Matchmaking/Matchmaker.cs
++++ b/Server-Infinite/Matchmaking/Matchmaker.cs
+@@ -14,6 +14,10 @@ namespace ServerInfinite.Matchmaking;
+ /// * Ranked (Class Match G) = worlds 13 (solo) / 14 (team); attr2 = class (hard key), attr4 = level,
+ ///   level band widens with waiting time.
+ /// * group_id (team) is decided here; the cabinet only derives "same team as the first listed client".
++/// * Pair worlds (analysis/partner-invites.md): 5 = online tag (attr2 = pair key = min(own pilot id, partner id)),
++///   21 = casual partner recruit (first come), 22 = ranked partner recruit (attr2 = team class). Exactly two solo
++///   cabinets form a 2-client room, both group 0; never short rooms, never CPU stand-ins. The two cabinets then pair
++///   over P2P and the leader sends a normal team entry (groups=[partner]) that matches like any other team.
+ /// </summary>
+ public sealed class Matchmaker
+ {
+@@ -27,18 +31,23 @@ public sealed class Matchmaker
+     // (seconds waited, max |level diff|)
+     private static readonly (double Waited, int MaxLevelDiff)[] RankedBands = { (0, 0), (15, 1), (35, 2), (60, 99) };
+ 
+-    private enum Policy { None, Hard, Soft, Class }
++    private enum Policy { None, Hard, Soft, Class, Pair }
++
++    /// <summary>Pair worlds: 5 online tag, 21 casual recruit, 22 ranked recruit (partner-invites.md section 2).</summary>
++    public const uint OnlineTagWorld = 5, CasualRecruitWorld = 21, RankedRecruitWorld = 22;
++    /// <summary>The cabinet's own timeouts for these modes (used only when the entry says 0).</summary>
++    private const double OnlineTagTimeout = 90, RecruitTimeout = 150;
+ 
+     // world_id -> (name, attr2 policy); source: analysis/casual-shuffle-matching.md + ranked-matching.md
+     private static readonly Dictionary<uint, (string Name, Policy Policy)> Worlds = new()
+     {
+-        [5] = ("legacy-mode0", Policy.None),
++        [OnlineTagWorld] = ("online-tag", Policy.Pair),
+         [13] = ("class-solo", Policy.Class), [14] = ("class-team", Policy.Class),
+         [15] = ("instore-solo", Policy.Hard), [16] = ("instore-team", Policy.Hard),
+         [17] = ("shop-setting", Policy.Hard),
+         [18] = ("free-solo", Policy.Soft), [19] = ("free-team", Policy.Soft), [20] = ("free-solo-b", Policy.Soft),
+         [25] = ("free-mixed", Policy.Soft), [23] = ("mix-match", Policy.Soft),
+-        [21] = ("mode1", Policy.None), [22] = ("mode2", Policy.None),
++        [CasualRecruitWorld] = ("recruit-casual", Policy.Pair), [RankedRecruitWorld] = ("recruit-ranked", Policy.Pair),
+         [6] = ("tag-solo", Policy.Hard), [7] = ("tag-team", Policy.Hard), [24] = ("tag-mixed", Policy.Hard),
+         [26] = ("tag-solo-def", Policy.Hard), [27] = ("tag-team-def", Policy.Hard), [32] = ("tag-mixed-def", Policy.Hard),
+         [33] = ("tag7", Policy.Hard), [8] = ("mode8", Policy.Hard), [9] = ("mode9", Policy.Hard),
+@@ -65,6 +74,10 @@ public sealed class Matchmaker
+         public uint World;
+         public string WorldName = "";
+         public bool Ranked;
++        /// <summary>Pair world (5/21/22): two solo cabinets become partners; see <see cref="Matchmaker"/>.</summary>
++        public bool Pair;
++        /// <summary>attr2 as sent (world 5: the pair key; world 22: the team class).</summary>
++        public long Attr2;
+         public string Key = "";
+         public long? Soft;
+         public long Level;
+@@ -103,8 +116,13 @@ public sealed class Matchmaker
+             var (name, policy) = Worlds.TryGetValue(u.World, out var w) ? w : ($"world{u.World}", Policy.Hard);
+             u.WorldName = name;
+             u.Ranked = policy == Policy.Class;
++            u.Pair = policy == Policy.Pair;
++            u.Attr2 = attrs.GetValueOrDefault(AExtra);
++            if (u.Pair && e.MatchingTimeout == 0) u.Timeout = u.World == OnlineTagWorld ? OnlineTagTimeout : RecruitTimeout;
+             u.Key = $"{e.World?.MuchaGameId}|{e.World?.Version}|{u.World}|{attrs.GetValueOrDefault(AGroup)}";
+-            if (policy is Policy.Class or Policy.Hard) u.Key += $"|{attrs.GetValueOrDefault(AExtra)}";
++            // world 5: only identical pair keys meet; world 22: same team class; world 21: one first-come pool
++            if (policy is Policy.Class or Policy.Hard || (u.Pair && u.World != CasualRecruitWorld))
++                u.Key += $"|{attrs.GetValueOrDefault(AExtra)}";
+             u.Soft = policy == Policy.Soft ? attrs.GetValueOrDefault(AExtra) : null;
+             u.Level = attrs.GetValueOrDefault(ALevel);
+             if (e.BlBanapassportAmIds != null) u.BlAm.UnionWith(e.BlBanapassportAmIds);
+@@ -189,13 +207,23 @@ public sealed class Matchmaker
+             // load test 2026-11-13: a node id held by ANOTHER cabinet (different pcb_serial) must not replace or
+             // merge into that cabinet's entry (node ids are sequential, so guessable).
+             if (e.Myclient.NodeId == 0) return ErrorCode.ErrNodeid;   // never issued by IssueNodeId
++            // online tag 2026-11-13: pair worlds are solo searches for a partner (codes 0-2 never send groups, 
++            // partner-invites.md section 2). A team entry there would make a 3-4 cabinet "pair": refuse it.
++            if (t.Pair && t.Slots > 1)
++            {
++                Log?.Invoke($"entry {t.WorldName} node={e.Myclient.NodeId} refused: pair worlds take solo entries only (groups={t.Slots - 1})");
++                return ErrorCode.ErrMatchCondition;
++            }
+             foreach (var c in t.Humans)
+                 if (_byNode.TryGetValue(c.NodeId, out var owner) &&
+                     owner.Clients.Any(x => x.NodeId == c.NodeId && x.PcbSerial != c.PcbSerial))
+                     return ErrorCode.ErrDuplicateEntry;
+             // load test 2026-11-13: a repeated EntryMatching (same node, same apply_id) that arrives after the
+             // unit was matched used to queue a second unit -> the cabinet was put into two rooms.
+-            if (_byNode.TryGetValue(e.Myclient.NodeId, out var done) && done.Room != null && done.ApplyId == e.ApplyId)
++            // online tag 2026-11-13: same world too, so a leader whose team entry re-uses the node (and apply_id) of its
++            // finished world-5 pair search is not handed the old 2-cabinet pair room as its team match.
++            if (_byNode.TryGetValue(e.Myclient.NodeId, out var done) && done.Room != null && done.ApplyId == e.ApplyId &&
++                done.World == t.World)
+             {
+                 done.LastSeen = now;
+                 return ErrorCode.Success;                              // next CheckMatching returns the same room
+@@ -232,6 +260,8 @@ public sealed class Matchmaker
+             NetEntry(e.Myclient, sourceIp, "entry");
+             TryMatch(now);
+             Log?.Invoke($"entry {t.WorldName} nodes=[{string.Join(",", t.NodeIds)}] slots={t.Slots} key={t.Key} level={t.Level} queue={_queue.Count}");
++            if (t.World == OnlineTagWorld && t.Attr2 == 0 && t.Room == null)
++                (Warn ?? Log)?.Invoke($"TAG-WARN node={e.Myclient.NodeId} online-tag entry with pair key 0 (no partner id from the card server?) - it will never pair");
+         }
+         return ErrorCode.Success;
+     }
+@@ -317,7 +347,10 @@ public sealed class Matchmaker
+     private bool Compatible(Unit a, Unit b, double now)
+     {
+         if (a.Key != b.Key) return false;
++        if (a.Pair != b.Pair) return false;
++        if (a.Pair && a.World == OnlineTagWorld && a.Attr2 == 0) return false;   // no pair key: never pair at random
+         if (a.NodeIds.Overlaps(b.NodeIds)) return false;                 // same cabinet(s)
++        if (a.Pair && a.Humans.Any(c => b.Humans.Any(c2 => NetDiag.SameCabinet(c, c2)))) return false;   // never with itself
+         if (a.AmIds.Overlaps(b.AmIds)) return false;                     // same card twice
+         if (a.BlAm.Overlaps(b.AmIds) || b.BlAm.Overlaps(a.AmIds)) return false;
+         if (a.BlLoc.Overlaps(b.Locs) || b.BlLoc.Overlaps(a.Locs)) return false;
+@@ -419,6 +452,19 @@ public sealed class Matchmaker
+             foreach (var bucket in _queue.GroupBy(u => u.Key).Select(g => g.ToList()))
+             {
+                 var idx = bucket.Select((u, i) => (u, i)).ToDictionary(x => x.u, x => x.i);
++                if (bucket[0].Pair)
++                {
++                    // pair worlds: first come, first paired; exactly 2 cabinets; never short rooms / CPU fill
++                    for (var i = 0; i < bucket.Count && !made; i++)
++                    {
++                        var b = bucket.Skip(i + 1).FirstOrDefault(u => Compatible(bucket[i], u, now));
++                        if (b == null) continue;
++                        MakePairRoom(bucket[i], b, now);
++                        made = true;
++                    }
++                    if (made) break;
++                    continue;
++                }
+                 for (var i = 0; i < bucket.Count && !made; i++)
+                 {
+                     var a = bucket[i];
+@@ -479,6 +525,41 @@ public sealed class Matchmaker
+         Log?.Invoke(NetDiag.MatchLine(room.RoomId, clients.Select(c => (c.GroupId, c.Client)), src, Realms));
+     }
+ 
++    /// <summary>
++    /// Pair worlds: one room with the two cabinets, both group 0, in a fixed order so both see the same list.
++    /// World 5: lower am_id first = the cabinet the game makes the leader (own pilot id &lt; partner id, assuming
++    /// am_id == pilot_id as on our card server); worlds 21/22: lower node id first (the recruit leader rule is unknown).
++    /// </summary>
++    private void MakePairRoom(Unit a, Unit b, double now)
++    {
++        static long Am(Unit u) => u.Players.Count > 0 ? u.Players[0].BanapassportAmId : 0;
++        var ordered = a.World == OnlineTagWorld
++            ? new[] { a, b }.OrderBy(u => Am(u) == 0 ? long.MaxValue : Am(u)).ThenBy(u => u.LeaderNode).ToList()
++            : new[] { a, b }.OrderBy(u => u.LeaderNode).ToList();
++        var room = new Room
++        {
++            RoomId = _nextRoom++, At = now, World = a.World, Humans = 2,
++            Clients = ordered.Select(u => new RoomClient(0, u.Clients[0])).ToList(),
++        };
++        foreach (var u in ordered)
++        {
++            _queue.Remove(u);
++            u.Room = room;
++        }
++        Log?.Invoke($"MATCH room={room.RoomId} {a.WorldName} pair [{string.Join(",", ordered.Select(u => u.LeaderNode))}] " +
++                    $"key={a.Attr2} am=[{string.Join(",", ordered.Select(Am))}] (humans=2/2, both group 0)");
++        if (a.World == OnlineTagWorld)
++        {
++            var ams = ordered.Select(Am).ToList();
++            if (ams.All(x => x != 0) && ams.Min() != a.Attr2)
++                (Warn ?? Log)?.Invoke($"TAG-WARN room={room.RoomId} pair key {a.Attr2} != lower am_id {ams.Min()}: am_id is not the " +
++                                      "pilot id here (or ids come from different card servers) - leader/member may disagree");
++        }
++        var src = new Dictionary<uint, string>();
++        foreach (var u in ordered) foreach (var kv in u.SourceByNode) src[kv.Key] = kv.Value;
++        Log?.Invoke(NetDiag.MatchLine(room.RoomId, room.Clients.Select(c => (c.GroupId, c.Client)), src, Realms));
++    }
++
+     /// <summary>The cabinet's own unused 2nd IssueNodeId id; unknown batch (server restarted) -> id + 1 unless that id
+     /// is a human node of a waiting/matched unit. 0 = none usable.</summary>
+     private uint StandInNode(uint humanNode, List<Unit> roomUnits)
+diff --git a/Tests/Matchmaking.Tests/MatchmakerTests.cs b/Tests/Matchmaking.Tests/MatchmakerTests.cs
+index 6adc0f3..17428fd 100644
+--- a/Tests/Matchmaking.Tests/MatchmakerTests.cs
++++ b/Tests/Matchmaking.Tests/MatchmakerTests.cs
+@@ -76,8 +76,8 @@ public class MatchmakerTests
+     public void TwoTeamsWithCpuPartnersMatch()
+     {
+         var mm = New();
+-        var a = Entry(5, "TN");
+-        var b = Entry(5, "TN");
++        var a = Entry(23, "TN");
++        var b = Entry(23, "TN");
+         mm.Entry(a, 0);
+         mm.Entry(b, 0);
+         var room = mm.Check(a.Myclient.NodeId, 1).Room!;
+diff --git a/Tests/Matchmaking.Tests/OnlineTagTests.cs b/Tests/Matchmaking.Tests/OnlineTagTests.cs
+new file mode 100644
+index 0000000..f7c4beb
+--- /dev/null
++++ b/Tests/Matchmaking.Tests/OnlineTagTests.cs
+@@ -0,0 +1,273 @@
++using nue.protocol.mms;
++using ServerInfinite.Matchmaking;
++using Xunit;
++
++namespace Matchmaking.Tests;
++
++// Online tag (world 5) and partner recruit (worlds 21 / 22). EXPERIMENTAL: entry shapes follow static analysis of
++// vsac29 (analysis/partner-invites.md), never a live capture.
++public class OnlineTagTests
++{
++    private uint _node = 500;
++
++    private static Client Cl(uint node, string serial, string ip = "")
++    {
++        var c = new Client
++        {
++            NodeId = node, PcbSerial = serial, LocId = $"L{serial}", PrefCode = 13, GlobalIpaddress = ip,
++            NatMappingType = NatMappingType.NmEndpointIndependent, NatFilteringType = NatFilteringType.NfEndpointIndependent
++        };
++        c.Properties.Add(new Client.Property { PropertyId = 0, PropertyValue = "Y" });
++        return c;
++    }
++
++    /// <summary>What CAcSeqWanTagEntry sends: attr2 = min(own pilot id, partner id), am_id = own pilot id.</summary>
++    private Request.EntryMatching Tag(uint pilot, uint partner, uint timeout = 90, string? serial = null, uint? node = null)
++        => Solo(Matchmaker.OnlineTagWorld, Math.Min(pilot, partner), pilot, timeout, serial, node);
++
++    private Request.EntryMatching Solo(uint world, long attr2, uint am, uint timeout = 150, string? serial = null, uint? node = null,
++        uint applyId = 1)
++    {
++        var n = node ?? ++_node;
++        var e = new Request.EntryMatching
++        {
++            ApplyId = applyId, Myclient = Cl(n, serial ?? $"P{n}"), MatchingTimeout = timeout,
++            Myplayer = new Player { BanapassportAmId = am },
++            World = new World { MuchaGameId = "GIB1", Version = 1, WorldId = world }
++        };
++        e.Myplayer.Parameters.Add(new Player.Parameter { AttributeId = 1, parameter = 0 });
++        e.Myplayer.Parameters.Add(new Player.Parameter { AttributeId = 2, parameter = attr2 });
++        e.Myplayer.Parameters.Add(new Player.Parameter { AttributeId = 3, parameter = 0 });
++        return e;
++    }
++
++    /// <summary>The leader's team entry after the pair formed: Mix team (world 23) with the partner as "Y" group.</summary>
++    private static Request.EntryMatching TeamEntry(Request.EntryMatching leader, Request.EntryMatching member, uint world = 23,
++        uint applyId = 2)
++    {
++        var e = new Request.EntryMatching
++        {
++            ApplyId = applyId, Myclient = leader.Myclient, MatchingTimeout = 150,
++            Myplayer = new Player { BanapassportAmId = leader.Myplayer.BanapassportAmId },
++            World = new World { MuchaGameId = "GIB1", Version = 1, WorldId = world }
++        };
++        // Mix: attr2 = veteran flag (not the pair key any more)
++        e.Myplayer.Parameters.Add(new Player.Parameter { AttributeId = 1, parameter = 0 });
++        e.Myplayer.Parameters.Add(new Player.Parameter { AttributeId = 2, parameter = 0 });
++        e.Groups.Add(new Request.EntryMatching.Group { Client = member.Myclient, Player = member.Myplayer });
++        return e;
++    }
++
++    private static Matchmaker New(bool cpu = false) =>
++        new(fillAfter: 3, allowPartial: true, softWait: 15, seed: 1) { StaleAfter = 1e6, CpuStandIns = cpu };
++
++    private static uint Node(Request.EntryMatching e) => e.Myclient.NodeId;
++
++    [Fact]
++    public void TwoTagPartnersPairOnTheSameSide()
++    {
++        var mm = New();
++        var a = Tag(20, 10);          // entered first, but pilot 10 is the leader (own id < partner id)
++        var b = Tag(10, 20);
++        Assert.Equal(ErrorCode.Success, mm.Entry(a, 0));
++        Assert.Equal(ErrorCode.Success, mm.Entry(b, 1));
++        var (code, room, _) = mm.Check(Node(a), 2);
++        Assert.Equal(ErrorCode.Success, code);
++        Assert.NotNull(room);
++        Assert.Equal(2, room!.Clients.Count);
++        Assert.All(room.Clients, c => Assert.Equal(0u, c.GroupId));
++        Assert.Equal(new[] { Node(b), Node(a) }, room.Clients.Select(c => c.Client.NodeId));   // leader (lower id) first
++        Assert.Same(room, mm.Check(Node(b), 2).Room);                                           // same list for both
++        Assert.All(room.Clients, c => Assert.True(Matchmaker.Unit.IsHuman(c.Client)));
++        Assert.Equal(0, mm.QueueLength);
++    }
++
++    [Fact]
++    public void OrderDoesNotDependOnArrival()
++    {
++        var mm = New();
++        var lo = Tag(3, 7); var hi = Tag(7, 3);
++        mm.Entry(lo, 0); mm.Entry(hi, 0);
++        Assert.Equal(Node(lo), mm.Check(Node(hi), 1).Room!.Clients[0].Client.NodeId);
++    }
++
++    [Fact]
++    public void MismatchedPairKeysNeverPairAndTimeOutWithCancel()
++    {
++        var mm = New();
++        var a = Tag(10, 20);        // key 10
++        var c = Tag(30, 40);        // key 30
++        mm.Entry(a, 0); mm.Entry(c, 0);
++        for (var t = 1; t <= 89; t += 4)
++        {
++            Assert.Null(mm.Check(Node(a), t).Room);
++            Assert.Null(mm.Check(Node(c), t).Room);
++        }
++        Assert.Equal(ErrorCode.MatchCanceled, mm.Check(Node(a), 91).Code);   // the cabinet's own 90 s
++        Assert.Equal(ErrorCode.MatchCanceled, mm.Check(Node(c), 91).Code);
++        Assert.Equal(ErrorCode.MatchCanceled, mm.Check(Node(a), 92).Code);   // a retried poll too
++    }
++
++    [Fact]
++    public void TagEntryWithoutTimeoutUses90Seconds()
++    {
++        var mm = New();
++        var a = Tag(10, 20, timeout: 0);
++        mm.Entry(a, 0);
++        Assert.Equal(ErrorCode.Success, mm.Check(Node(a), 89).Code);
++        Assert.Equal(ErrorCode.MatchCanceled, mm.Check(Node(a), 91).Code);
++        var r = Solo(Matchmaker.CasualRecruitWorld, 0, 5, timeout: 0);
++        mm.Entry(r, 100);
++        Assert.Equal(ErrorCode.Success, mm.Check(Node(r), 249).Code);
++        Assert.Equal(ErrorCode.MatchCanceled, mm.Check(Node(r), 251).Code);
++    }
++
++    [Fact]
++    public void ALoneTagEntryNeverGetsAShortRoomOrCpu()
++    {
++        var mm = New(cpu: true);
++        var a = Tag(10, 20);
++        var solo23 = Solo(23, 0, 77);
++        mm.Entry(a, 0); mm.Entry(solo23, 0);
++        Assert.Null(mm.Check(Node(a), 60).Room);
++        Assert.Null(mm.Check(Node(solo23), 60).Room);   // a different world, never mixed in
++        var b = Tag(20, 10);
++        mm.Entry(b, 61);
++        var room = mm.Check(Node(b), 62).Room!;
++        Assert.Equal(2, room.Clients.Count);
++        Assert.DoesNotContain(room.Clients, c => c.Client.PcbSerial == Matchmaker.NpcSerial);
++    }
++
++    [Fact]
++    public void ThirdCabinetWithTheSameKeyWaits()
++    {
++        var mm = New();
++        var a = Tag(10, 20); var b = Tag(20, 10); var x = Tag(10, 20);
++        mm.Entry(a, 0); mm.Entry(b, 0); mm.Entry(x, 0);
++        Assert.NotNull(mm.Check(Node(a), 1).Room);
++        Assert.Null(mm.Check(Node(x), 1).Room);
++        Assert.Equal(1, mm.QueueLength);
++    }
++
++    [Fact]
++    public void PairKeyZeroNeverPairs()
++    {
++        var mm = New();
++        var a = Solo(Matchmaker.OnlineTagWorld, 0, 1, 90); var b = Solo(Matchmaker.OnlineTagWorld, 0, 2, 90);
++        mm.Entry(a, 0); mm.Entry(b, 0);
++        Assert.Null(mm.Check(Node(a), 30).Room);
++    }
++
++    [Fact]
++    public void NeverMatchListsAreRespected()
++    {
++        var mm = New();
++        var a = Tag(10, 20); var b = Tag(20, 10);
++        a.BlBanapassportAmIds = new uint[] { 20 };
++        mm.Entry(a, 0); mm.Entry(b, 0);
++        Assert.Null(mm.Check(Node(a), 1).Room);
++        var r1 = Solo(Matchmaker.CasualRecruitWorld, 0, 31); var r2 = Solo(Matchmaker.CasualRecruitWorld, 0, 32);
++        r2.BlLocIds.Add(r1.Myclient.LocId);
++        mm.Entry(r1, 0); mm.Entry(r2, 0);
++        Assert.Null(mm.Check(Node(r1), 1).Room);
++    }
++
++    [Fact]
++    public void SameCardOrCabinetNeverPairsWithItself()
++    {
++        var mm = New();
++        var a = Tag(10, 20); var b = Tag(10, 20);   // same card (am 10) on two cabinets
++        mm.Entry(a, 0); mm.Entry(b, 0);
++        Assert.Null(mm.Check(Node(a), 1).Room);
++        var mm2 = New();
++        var c = Solo(Matchmaker.CasualRecruitWorld, 0, 41, serial: "SAME1");
++        var d = Solo(Matchmaker.CasualRecruitWorld, 0, 42, serial: "SAME1");
++        mm2.Entry(c, 0); mm2.Entry(d, 0);           // same cabinet re-entered: the old wait is dropped
++        Assert.Null(mm2.Check(Node(d), 1).Room);
++        Assert.Equal(1, mm2.QueueLength);
++    }
++
++    [Fact]
++    public void TeamEntryInAPairWorldIsRefused()
++    {
++        var mm = New();
++        var a = Tag(10, 20); var b = Tag(20, 10);
++        Assert.Equal(ErrorCode.ErrMatchCondition, mm.Entry(TeamEntry(a, b, world: Matchmaker.OnlineTagWorld), 0));
++        Assert.Equal(0, mm.QueueLength);
++    }
++
++    [Fact]
++    public void CancelEndsTheWaitAndAPartnerArrivingLaterFindsNobody()
++    {
++        var mm = New();
++        var a = Tag(10, 20);
++        mm.Entry(a, 0);
++        mm.Cancel(Node(a), 5, a.ApplyId);
++        var b = Tag(20, 10);
++        mm.Entry(b, 6);
++        Assert.Null(mm.Check(Node(b), 7).Room);
++        Assert.Equal(ErrorCode.ErrMatchNoentry, mm.Check(Node(a), 7).Code);   // own cancel: no tombstone needed
++    }
++
++    [Fact]
++    public void CasualRecruitIsFirstComeFirstPaired()
++    {
++        var mm = New();
++        var r = Enumerable.Range(0, 3).Select(i => Solo(Matchmaker.CasualRecruitWorld, i, (uint)(50 + i))).ToList();
++        r.ForEach(e => mm.Entry(e, 0));
++        var room = mm.Check(Node(r[0]), 1).Room!;
++        Assert.Equal(new[] { Node(r[0]), Node(r[1]) }, room.Clients.Select(c => c.Client.NodeId));
++        Assert.All(room.Clients, c => Assert.Equal(0u, c.GroupId));
++        Assert.Null(mm.Check(Node(r[2]), 1).Room);
++        Assert.Null(mm.Check(Node(r[2]), 100).Room);            // no short room / fill, ever
++    }
++
++    [Fact]
++    public void RankedRecruitPairsOnlyTheSameClass()
++    {
++        var mm = New();
++        var c2 = Solo(Matchmaker.RankedRecruitWorld, 2, 61); var c3 = Solo(Matchmaker.RankedRecruitWorld, 3, 62);
++        mm.Entry(c2, 0); mm.Entry(c3, 0);
++        Assert.Null(mm.Check(Node(c2), 100).Room);
++        var c2b = Solo(Matchmaker.RankedRecruitWorld, 2, 63);
++        mm.Entry(c2b, 101);
++        Assert.Equal(2, mm.Check(Node(c2), 102).Room!.Clients.Count);
++        Assert.Null(mm.Check(Node(c3), 102).Room);
++    }
++
++    [Fact]
++    public void RecruitAndTagNeverMix()
++    {
++        var mm = New();
++        var t = Tag(10, 20); var r = Solo(Matchmaker.CasualRecruitWorld, 10, 20);
++        mm.Entry(t, 0); mm.Entry(r, 0);
++        Assert.Null(mm.Check(Node(t), 1).Room);
++    }
++
++    [Fact]
++    public void TwoTagPairsThenMatchEachOther2v2()
++    {
++        var mm = New();
++        // pair 1: pilots 10 + 20; pair 2: pilots 30 + 40
++        var a1 = Tag(10, 20); var a2 = Tag(20, 10); var b1 = Tag(30, 40); var b2 = Tag(40, 30);
++        foreach (var e in new[] { a1, b1, a2, b2 }) Assert.Equal(ErrorCode.Success, mm.Entry(e, 0));
++        var p1 = mm.Check(Node(a1), 1).Room!; var p2 = mm.Check(Node(b1), 1).Room!;
++        Assert.NotSame(p1, p2);
++        Assert.Equal(new[] { Node(a1), Node(a2) }.OrderBy(x => x), p1.Clients.Select(c => c.Client.NodeId).OrderBy(x => x));
++        Assert.Equal(new[] { Node(b1), Node(b2) }.OrderBy(x => x), p2.Clients.Select(c => c.Client.NodeId).OrderBy(x => x));
++
++        // only the leaders send a team entry (same node; apply_id re-used on purpose: must not get the old pair room)
++        Assert.Equal(ErrorCode.Success, mm.Entry(TeamEntry(a1, a2, applyId: a1.ApplyId), 10));
++        var wait = mm.Check(Node(a2), 11);                     // the member polls: now the team search, still waiting
++        Assert.Equal(ErrorCode.Success, wait.Code);
++        Assert.Null(wait.Room);
++        Assert.Equal(ErrorCode.Success, mm.Entry(TeamEntry(b1, b2), 12));
++        var room = mm.Check(Node(a1), 13).Room!;
++        Assert.Equal(4, room.Clients.Count);
++        foreach (var n in new[] { a1, a2, b1, b2 }) Assert.Same(room, mm.Check(Node(n), 13).Room);
++        uint G(Request.EntryMatching e) => room.Clients.Single(c => c.Client.NodeId == Node(e)).GroupId;
++        Assert.Equal(G(a1), G(a2));
++        Assert.Equal(G(b1), G(b2));
++        Assert.NotEqual(G(a1), G(b1));
++    }
++}
+-- 
+2.47.3
+
+
+From e460603df7dd164e85b3ed5cd456994a819a2601 Mon Sep 17 00:00:00 2001
+From: ServerOmega <69215510+ServerOmega@users.noreply.github.com>
+Date: Fri, 13 Nov 2026 19:11:51 -0800
+Subject: [PATCH 09/11] Online tag: send tag teams in LoadCard (36); WebUI
+ invite checks the partner's code server-side
+
+* LoadCard.MobileUserGroup.tag_teams: every team the card leads or partners, partner_id = partner's pilot id
+  (card id), tag_status configurable (OnlineTag.TagStatus, default 0), one entry per team, max 20.
+* PreCreateTeam (the invite: partner's user id + invitation code): the code is now checked by the server
+  (upstream trusted the WebUI's separate check), no team with yourself, 20-team limit on both cards,
+  duplicates refused with Success=false, and the code is one-time by default (OnlineTag.OneTimeInviteCode).
+* WebUI sends the code with preCreateTeam.
+* New config section CardServerConfig.OnlineTag (SendTagTeams, TagStatus, MaxTeams, OneTimeInviteCode).
+---
+ .../MobileUser/OnlineTagTeamsCommand.cs       | 35 +++++++
+ Server-Infinite/Configurations/server.json    |  6 ++
+ .../Handlers/Game/LoadCardQueryHandler.cs     |  8 +-
+ .../UI/Team/PreCreateTeamCommandHandler.cs    | 97 +++++++++++--------
+ .../Models/Config/CardServerConfig.cs         |  3 +
+ .../Models/Config/OnlineTagConfigurations.cs  | 28 ++++++
+ .../Strategy/Team/OnlineTagTeamList.cs        | 44 +++++++++
+ .../Strategy/Team/TagTeamGroupBuilder.cs      |  5 +-
+ .../Customize/CustomizeTeamTagsTab.razor      |  6 +-
+ .../Dto/Request/PreCreateTeamRequest.cs       |  2 +
+ 10 files changed, 189 insertions(+), 45 deletions(-)
+ create mode 100644 Server-Infinite/Commands/LoadCard/MobileUser/OnlineTagTeamsCommand.cs
+ create mode 100644 Server-Infinite/Models/Config/OnlineTagConfigurations.cs
+ create mode 100644 Server-Infinite/Strategy/Team/OnlineTagTeamList.cs
+
+diff --git a/Server-Infinite/Commands/LoadCard/MobileUser/OnlineTagTeamsCommand.cs b/Server-Infinite/Commands/LoadCard/MobileUser/OnlineTagTeamsCommand.cs
+new file mode 100644
+index 0000000..e295931
+--- /dev/null
++++ b/Server-Infinite/Commands/LoadCard/MobileUser/OnlineTagTeamsCommand.cs
+@@ -0,0 +1,35 @@
++using nue.protocol.exvs;
++using ServerInfinite.Models.Cards;
++using ServerInfinite.Models.Config;
++using ServerInfinite.Persistence;
++using ServerInfinite.Strategy.Team;
++
++namespace ServerInfinite.Commands.LoadCard.MobileUser;
++
++/// <summary>
++/// [exvs2-lobbies / EXPERIMENTAL] LoadCard.MobileUserGroup.tag_teams (36): the list the online-tag (オンラインタッグ)
++/// menu most likely shows (partner-invites.md 4). Upstream never filled it, so online tag had nobody to pick.
++/// </summary>
++public class OnlineTagTeamsCommand : ILoadCardMobileUserCommand
++{
++    private readonly ServerDbContext _context;
++    private readonly OnlineTagConfigurations _cfg;
++    private readonly ILogger? _logger;
++
++    public OnlineTagTeamsCommand(ServerDbContext context, OnlineTagConfigurations cfg, ILogger? logger = null)
++    {
++        _context = context;
++        _cfg = cfg;
++        _logger = logger;
++    }
++
++    public void Fill(CardProfile cardProfile, Response.LoadCard.MobileUserGroup mobileUserGroup)
++    {
++        if (!_cfg.SendTagTeams) return;
++        var teams = OnlineTagTeamList.Build(_context, cardProfile, _cfg);
++        mobileUserGroup.TagTeams.AddRange(teams);
++        _logger?.LogInformation("LoadCard online tag: CardId={CardId} tag_teams={Count} tag_status={Status} [{Teams}]",
++            cardProfile.Id, teams.Count, _cfg.TagStatus,
++            string.Join(", ", teams.Select(t => $"team {t.Id} partner {t.PartnerId} key {Math.Min(OnlineTagTeamList.WirePilotId(cardProfile.Id), t.PartnerId)}")));
++    }
++}
+diff --git a/Server-Infinite/Configurations/server.json b/Server-Infinite/Configurations/server.json
+index 0c08f17..627c1bb 100644
+--- a/Server-Infinite/Configurations/server.json
++++ b/Server-Infinite/Configurations/server.json
+@@ -40,6 +40,12 @@
+       "FirstNodeId": 1000,
+       "ClassMatchScheduleMode": "Both",
+       "PersistClassMatchResult": true
++    },
++    "OnlineTag": {
++      "SendTagTeams": true,
++      "TagStatus": 0,
++      "MaxTeams": 20,
++      "OneTimeInviteCode": true
+     }
+   }
+ }
+diff --git a/Server-Infinite/Handlers/Game/LoadCardQueryHandler.cs b/Server-Infinite/Handlers/Game/LoadCardQueryHandler.cs
+index 9d1cd8e..77a45f3 100644
+--- a/Server-Infinite/Handlers/Game/LoadCardQueryHandler.cs
++++ b/Server-Infinite/Handlers/Game/LoadCardQueryHandler.cs
+@@ -9,6 +9,8 @@ using ServerInfinite.Persistence;
+ using ServerInfinite.Processor.Tracker;
+ using Microsoft.EntityFrameworkCore;
+ using ServerInfinite.Strategy.Team;
++using Microsoft.Extensions.Options;
++using ServerInfinite.Models.Config;
+ 
+ namespace ServerInfinite.Handlers.Game;
+ 
+@@ -19,12 +21,15 @@ public class LoadCardQueryHandler : IRequestHandler<LoadCardQuery, Response>
+     private readonly ILogger<LoadCardQueryHandler> _logger;
+     private readonly ServerDbContext _context;
+     private readonly ITrackerCatalog _trackerCatalog;
++    private readonly OnlineTagConfigurations _onlineTag;
+ 
+-    public LoadCardQueryHandler(ILogger<LoadCardQueryHandler> logger, ServerDbContext context, ITrackerCatalog? trackerCatalog = null)
++    public LoadCardQueryHandler(ILogger<LoadCardQueryHandler> logger, ServerDbContext context, ITrackerCatalog? trackerCatalog = null,
++        IOptions<CardServerConfig>? options = null)
+     {
+         _logger = logger;
+         _context = context;
+         _trackerCatalog = trackerCatalog ?? TrackerCatalog.FromOutput();
++        _onlineTag = options?.Value.OnlineTag ?? new OnlineTagConfigurations();
+     }
+ 
+     public Task<Response> Handle(LoadCardQuery query, CancellationToken cancellationToken)
+@@ -116,6 +121,7 @@ public class LoadCardQueryHandler : IRequestHandler<LoadCardQuery, Response>
+             new DefaultStickerCommand(_context, trackers),
+             new MobileSuitStickerCommand(_context, trackers),
+             new QuickTagCommand(_context),
++            new OnlineTagTeamsCommand(_context, _onlineTag, _logger),   // exvs2-lobbies: online tag list (36)
+             new LoadQuickStartInfoCommand(_context),
+             new LoadStageSaveDataCommand(_context)
+         };
+diff --git a/Server-Infinite/Handlers/UI/Team/PreCreateTeamCommandHandler.cs b/Server-Infinite/Handlers/UI/Team/PreCreateTeamCommandHandler.cs
+index ca2c0a6..93393b9 100644
+--- a/Server-Infinite/Handlers/UI/Team/PreCreateTeamCommandHandler.cs
++++ b/Server-Infinite/Handlers/UI/Team/PreCreateTeamCommandHandler.cs
+@@ -1,6 +1,8 @@
+ using MediatR;
+ using Microsoft.EntityFrameworkCore;
++using Microsoft.Extensions.Options;
+ using ServerInfinite.Models.Cards.Team;
++using ServerInfinite.Models.Config;
+ using ServerInfinite.Persistence;
+ using WebUIInfinite.Shared.Dto.Request;
+ using WebUIInfinite.Shared.Dto.Response;
+@@ -10,69 +12,78 @@ namespace ServerInfinite.Handlers.UI.Team;
+ 
+ public record PreCreateTeamCommand(PreCreateTeamRequest Request) : IRequest<PreCreateTeamResponse>;
+ 
++/// <summary>
++/// Creates a tag team = the online-tag "invite" (exvs2-lobbies, analysis/partner-invites.md 6 Step A): player A enters
++/// partner B's user id + B's invitation code in the WebUI. exvs2-lobbies changes: the code is checked HERE (upstream only
++/// checked it in a separate call, so any card id could be added as a partner), no team with yourself, both cards'
++/// 20-team limit, and (OnlineTag.OneTimeInviteCode) B gets a new code once it has been used.
++/// Failures answer Success = false, NewTeamId = 0 (the WebUI then shows "invalid player").
++/// </summary>
+ public class PreCreateTeamCommandHandler : IRequestHandler<PreCreateTeamCommand, PreCreateTeamResponse>
+ {
++    public const int MaxTeamsPerCard = 20;
++
+     private readonly ServerDbContext _context;
+-    
+-    public PreCreateTeamCommandHandler(ServerDbContext context)
++    private readonly OnlineTagConfigurations _cfg;
++    private readonly ILogger<PreCreateTeamCommandHandler>? _logger;
++
++    public PreCreateTeamCommandHandler(ServerDbContext context, IOptions<CardServerConfig>? options = null,
++        ILogger<PreCreateTeamCommandHandler>? logger = null)
+     {
+         _context = context;
++        _cfg = options?.Value.OnlineTag ?? new OnlineTagConfigurations();
++        _logger = logger;
+     }
+-    
++
++    private static Task<PreCreateTeamResponse> Fail() =>
++        Task.FromResult(new PreCreateTeamResponse { Success = false, NewTeamId = 0 });
++
+     public Task<PreCreateTeamResponse> Handle(PreCreateTeamCommand request, CancellationToken cancellationToken)
+     {
+-        var preCreateTeamRequestRequest = request.Request;
+-        
++        var req = request.Request;
++
+         var cardProfile = _context.CardProfiles
+             .Include(x => x.TagTeamDatas)
+-            .FirstOrDefault(x => x.AccessCode == preCreateTeamRequestRequest.AccessCode && x.ChipId == preCreateTeamRequestRequest.ChipId);
+-        
++            .FirstOrDefault(x => x.AccessCode == req.AccessCode && x.ChipId == req.ChipId);
++
+         if (cardProfile == null)
+         {
+             throw new InvalidCardDataException("Card Profile is invalid");
+         }
+-        
+-        if (cardProfile.TagTeamDatas.Count >= 20)
++
++        var cardId = cardProfile.Id;
++        var partnerId = (int)req.PartnerCardId;
++        if (partnerId == 0 || partnerId == cardId || string.IsNullOrEmpty(req.PartnerToken))
+         {
+-            return Task.FromResult(new PreCreateTeamResponse
+-            {
+-                Success = true,
+-                NewTeamId = 0
+-            });
++            return Fail();
+         }
+ 
+-        var cardId = cardProfile.Id;
++        var partner = _context.CardProfiles
++            .FirstOrDefault(x => x.Id == partnerId && x.IsNewCard == false && x.DistinctTeamFormationToken != "");
++        if (partner == null || partner.DistinctTeamFormationToken != req.PartnerToken)
++        {
++            _logger?.LogInformation("Tag team invite refused: CardId={CardId} partner={PartnerId} (unknown partner or wrong code)", cardId, partnerId);
++            return Fail();
++        }
+ 
+-        var existingTeam = _context.TagTeamDataDbSet
+-            .ToList()
+-            .FirstOrDefault(team =>
+-            {
+-                if (team.CardId == cardId && team.TeammateCardId == preCreateTeamRequestRequest.PartnerCardId)
+-                {
+-                    return true;
+-                }
+-                
+-                if (team.CardId == preCreateTeamRequestRequest.PartnerCardId && team.TeammateCardId == cardId)
+-                {
+-                    return true;
+-                }
+-
+-                return false;
+-            });
++        int Teams(int id) => _context.TagTeamDataDbSet.Count(t => t.CardId == id || t.TeammateCardId == (uint)id);
++        if (Teams(cardId) >= MaxTeamsPerCard || Teams(partnerId) >= MaxTeamsPerCard)
++        {
++            return Fail();
++        }
+ 
++        var existingTeam = _context.TagTeamDataDbSet.FirstOrDefault(team =>
++            (team.CardId == cardId && team.TeammateCardId == (uint)partnerId) ||
++            (team.CardId == partnerId && team.TeammateCardId == (uint)cardId));
+         if (existingTeam is not null)
+         {
+-            return Task.FromResult(new PreCreateTeamResponse
+-            {
+-                Success = true,
+-                NewTeamId = 0
+-            });
++            return Fail();
+         }
+ 
+         var newTeam = new TagTeamData
+         {
+             CardId = cardProfile.Id,
+-            TeammateCardId = preCreateTeamRequestRequest.PartnerCardId,
++            TeammateCardId = (uint)partnerId,
+             TeamName = "EXTREME TEAM",
+             OnlineRankPoint = 0,
+             BackgroundPartsId = 0,
+@@ -85,13 +96,19 @@ public class PreCreateTeamCommandHandler : IRequestHandler<PreCreateTeamCommand,
+         };
+ 
+         cardProfile.TagTeamDatas.Add(newTeam);
++        if (_cfg.OneTimeInviteCode)
++        {
++            partner.DistinctTeamFormationToken = Guid.NewGuid().ToString("n").Substring(0, 16);
++        }
+ 
+         _context.SaveChanges();
+-        
++        _logger?.LogInformation("Tag team created: team {TeamId} = card {CardId} + partner {PartnerId} (online-tag pair key {Key})",
++            newTeam.Id, cardId, partnerId, Math.Min(cardId, partnerId));
++
+         return Task.FromResult(new PreCreateTeamResponse
+         {
+             Success = true,
+-            NewTeamId = (uint) newTeam.Id,
++            NewTeamId = (uint)newTeam.Id,
+         });
+     }
+-}
+\ No newline at end of file
++}
+diff --git a/Server-Infinite/Models/Config/CardServerConfig.cs b/Server-Infinite/Models/Config/CardServerConfig.cs
+index 969bd29..2045e20 100644
+--- a/Server-Infinite/Models/Config/CardServerConfig.cs
++++ b/Server-Infinite/Models/Config/CardServerConfig.cs
+@@ -14,6 +14,9 @@ public class CardServerConfig
+     // exvs2-lobbies: online matchmaking (experimental)
+     public OnlineMatchingConfigurations OnlineMatching { get; set; } = new();
+ 
++    // exvs2-lobbies: online tag / partner invites (experimental)
++    public OnlineTagConfigurations OnlineTag { get; set; } = new();
++
+     public override string ToString()
+     {
+         var options = new JsonSerializerOptions
+diff --git a/Server-Infinite/Models/Config/OnlineTagConfigurations.cs b/Server-Infinite/Models/Config/OnlineTagConfigurations.cs
+new file mode 100644
+index 0000000..e786e80
+--- /dev/null
++++ b/Server-Infinite/Models/Config/OnlineTagConfigurations.cs
+@@ -0,0 +1,28 @@
++namespace ServerInfinite.Models.Config;
++
++/// <summary>
++/// [exvs2-lobbies / EXPERIMENTAL, untested with the real game] Online tag (play with a specific partner from another
++/// shop), analysis/partner-invites.md. A tag team is created in the WebUI (partner's user id + invitation code); the
++/// card server then lists it in LoadCard.MobileUserGroup.tag_teams (36), the cabinet offers it under online tag and
++/// both cabinets search MMS world 5 with pair key = min(own pilot id, partner_id).
++/// </summary>
++public class OnlineTagConfigurations
++{
++    /// <summary>Send the card's tag teams in LoadCard.MobileUserGroup.tag_teams (field 36).</summary>
++    public bool SendTagTeams { get; set; } = true;
++
++    /// <summary>
++    /// TagTeamGroup.tag_status (required field, meaning unknown). 0 first (static analysis, partner-invites.md 6 Step A);
++    /// if the online-tag list stays empty in the game, try 1.
++    /// </summary>
++    public uint TagStatus { get; set; } = 0;
++
++    /// <summary>Max teams per card in the list (the WebUI allows 20 per leader).</summary>
++    public int MaxTeams { get; set; } = 20;
++
++    /// <summary>
++    /// The partner's invitation code works once: after a team is created with it, the partner gets a new code
++    /// (shown in their WebUI). false = upstream behaviour (the code never changes).
++    /// </summary>
++    public bool OneTimeInviteCode { get; set; } = true;
++}
+diff --git a/Server-Infinite/Strategy/Team/OnlineTagTeamList.cs b/Server-Infinite/Strategy/Team/OnlineTagTeamList.cs
+new file mode 100644
+index 0000000..07da995
+--- /dev/null
++++ b/Server-Infinite/Strategy/Team/OnlineTagTeamList.cs
+@@ -0,0 +1,44 @@
++using nue.protocol.exvs;
++using ServerInfinite.Models.Cards;
++using ServerInfinite.Models.Config;
++using ServerInfinite.Persistence;
++
++namespace ServerInfinite.Strategy.Team;
++
++/// <summary>
++/// [exvs2-lobbies / EXPERIMENTAL] The online-tag list of one card (analysis/partner-invites.md 6 Step A): every tag team
++/// the card leads or is the partner of, with partner_id = the partner's pilot id (= its card id, the value the partner's
++/// cabinet sends as its own pilot id). The cabinet builds the MMS world-5 pair key as min(own pilot id, partner_id) and
++/// makes the lower id the leader, so both sides must see each other's real pilot id here.
++/// Cross-card-server tags (Step C) need globally unique pilot ids first; keep every pilot-id-on-the-wire value going
++/// through <see cref="WirePilotId"/> so a per-server id range can be added in one place.
++/// </summary>
++public static class OnlineTagTeamList
++{
++    public static uint WirePilotId(int cardId) => (uint)cardId;
++
++    public static List<TagTeamGroup> Build(ServerDbContext context, CardProfile cardProfile, OnlineTagConfigurations cfg)
++    {
++        var own = context.TagTeamDataDbSet
++            .Where(x => x.CardId == cardProfile.Id)
++            .ToList()
++            .Select(t => (Team: t, Partner: (int)t.TeammateCardId));
++        var asPartner = context.TagTeamDataDbSet
++            .Where(x => x.TeammateCardId == (uint)cardProfile.Id)
++            .ToList()
++            .Select(t => (Team: t, Partner: t.CardId));
++        return own.Concat(asPartner)
++            .Where(x => x.Partner != 0 && x.Partner != cardProfile.Id)      // never a team with yourself
++            .GroupBy(x => x.Team.Id).Select(g => g.First())                 // one entry per team
++            .OrderBy(x => x.Team.Id)
++            .Take(Math.Max(0, cfg.MaxTeams))
++            .Select(x =>
++            {
++                var g = TagTeamGroupBuilder.Build(context, x.Team, x.Partner, cfg.TagStatus);
++                g.PartnerId = WirePilotId(x.Partner);
++                g.GroupTagPoint = (uint)Math.Max(0, x.Team.OnlineRankPoint);
++                return g;
++            })
++            .ToList();
++    }
++}
+diff --git a/Server-Infinite/Strategy/Team/TagTeamGroupBuilder.cs b/Server-Infinite/Strategy/Team/TagTeamGroupBuilder.cs
+index f4a790d..3813f6c 100644
+--- a/Server-Infinite/Strategy/Team/TagTeamGroupBuilder.cs
++++ b/Server-Infinite/Strategy/Team/TagTeamGroupBuilder.cs
+@@ -14,7 +14,7 @@ namespace ServerInfinite.Strategy.Team;
+ // styling/economy fields that are still owned by the WebUI editor.
+ internal static class TagTeamGroupBuilder
+ {
+-    public static TagTeamGroup Build(ServerDbContext context, TagTeamData tagTeam, int partnerCardId)
++    public static TagTeamGroup Build(ServerDbContext context, TagTeamData tagTeam, int partnerCardId, uint tagStatus = 0)
+     {
+         var group = new TagTeamGroup
+         {
+@@ -23,7 +23,8 @@ internal static class TagTeamGroupBuilder
+             PartnerId = (uint)partnerCardId,
+             // Client schema marks `tag_status` as required. Server has no team-status concept
+             // yet, so default to 0 ("active/idle") until a richer team lifecycle is modelled.
+-            TagStatus = 0,
++            // exvs2-lobbies: configurable (OnlineTag.TagStatus) for the online-tag list test.
++            TagStatus = tagStatus,
+             // Legacy server-only fields (tags 50-57), preserved for WebUI round-trip.
+             SkillPoint = tagTeam.SkillPoint,
+             SkillPointBoost = TeamConstants.TagSkillPointBoost,
+diff --git a/WebUIInfinite/Client/Pages/Components/Customize/CustomizeTeamTagsTab.razor b/WebUIInfinite/Client/Pages/Components/Customize/CustomizeTeamTagsTab.razor
+index 2a5e725..3ff2b23 100644
+--- a/WebUIInfinite/Client/Pages/Components/Customize/CustomizeTeamTagsTab.razor
++++ b/WebUIInfinite/Client/Pages/Components/Customize/CustomizeTeamTagsTab.razor
+@@ -142,7 +142,8 @@
+         {
+             AccessCode = CustomizeCardContext.AccessCode,
+             ChipId = CustomizeCardContext.ChipId,
+-            PartnerCardId = profileResult.PlayerId
++            PartnerCardId = profileResult.PlayerId,
++            PartnerToken = FriendTeamToken
+         };
+         
+         var preCreate = await Http.PostAsJsonAsync("/ui/team/preCreateTeam", preCreateRequest);
+@@ -160,10 +161,11 @@
+             return;
+         }
+ 
+-        if (preCreateRequest.PartnerCardId == 0)
++        if (preCreateRequest.PartnerCardId == 0 || preCreateResult.NewTeamId == 0)
+         {
+             return;
+         }
++        FriendTeamToken = string.Empty;   // invitation codes are one-time by default (OnlineTag.OneTimeInviteCode)
+         
+         CustomizeCardContext.TeamResponse.Teams.Add(new Team()
+         {
+diff --git a/WebUIInfinite/Shared/Dto/Request/PreCreateTeamRequest.cs b/WebUIInfinite/Shared/Dto/Request/PreCreateTeamRequest.cs
+index 27c6cb7..94b83aa 100644
+--- a/WebUIInfinite/Shared/Dto/Request/PreCreateTeamRequest.cs
++++ b/WebUIInfinite/Shared/Dto/Request/PreCreateTeamRequest.cs
+@@ -3,4 +3,6 @@ namespace WebUIInfinite.Shared.Dto.Request;
+ public class PreCreateTeamRequest : BasicCardRequest
+ {
+     public uint PartnerCardId { get; set; } = 0;
++    /// <summary>exvs2-lobbies: the partner's invitation code (DistinctTeamFormationToken), checked by the server.</summary>
++    public string PartnerToken { get; set; } = string.Empty;
+ }
+\ No newline at end of file
+-- 
+2.47.3
+
+
+From dcf1e9cf9fddc8862ad034846ebf1a1fb167a3d5 Mon Sep 17 00:00:00 2001
+From: ServerOmega <69215510+ServerOmega@users.noreply.github.com>
+Date: Fri, 13 Nov 2026 19:16:15 -0800
+Subject: [PATCH 10/11] WebUI: re-enable the Teams tab (online-tag invite) and
+ fix its crash on a new team
+
+Upstream hid the Teams tab; creating a team there (partner's user id + invitation code) is how a player
+invites an online-tag partner. A new team has BgmId 0, which crashed the tab (NullReferenceException in
+TeamTag.razor); the BGM name is now null-safe. Checked in headless Chrome: tab renders, ADD creates the team,
+the partner's code rotates, no render errors.
+---
+ .../Client/Pages/Components/Customize/Inner/TeamTag.razor  | 7 ++++---
+ WebUIInfinite/Client/Pages/CustomizeCard.razor             | 3 +--
+ WebUIInfinite/Client/Pages/CustomizeCard.razor.cs          | 6 +++---
+ 3 files changed, 8 insertions(+), 8 deletions(-)
+
+diff --git a/WebUIInfinite/Client/Pages/Components/Customize/Inner/TeamTag.razor b/WebUIInfinite/Client/Pages/Components/Customize/Inner/TeamTag.razor
+index 1e6fd4c..7a0a59b 100644
+--- a/WebUIInfinite/Client/Pages/Components/Customize/Inner/TeamTag.razor
++++ b/WebUIInfinite/Client/Pages/Components/Customize/Inner/TeamTag.razor
+@@ -73,15 +73,16 @@
+                 <MudField Label="@localizer["teamtag_team_bgm"]" Variant="Variant.Outlined">
+                     @{
+                         var bgm = CommonDataService.GetBgmById(CurrentTeam.BgmId);
+-                        var bgmName = bgm.Value;
++                        // exvs2-lobbies: a new team has BgmId 0 (no entry) -> the tab crashed with a NullReferenceException
++                        var bgmName = bgm?.Value ?? "-";
+                         var cultureName = Thread.CurrentThread.CurrentCulture.Name;
+ 
+-                        if (cultureName == "ja")
++                        if (bgm is not null && cultureName == "ja")
+                         {
+                             bgmName = bgm.ValueJP;
+                         }
+ 
+-                        if (cultureName == "zh-Hans")
++                        if (bgm is not null && cultureName == "zh-Hans")
+                         {
+                             bgmName = bgm.ValueCN;
+                         }
+diff --git a/WebUIInfinite/Client/Pages/CustomizeCard.razor b/WebUIInfinite/Client/Pages/CustomizeCard.razor
+index 5b8fb1e..4c605fb 100644
+--- a/WebUIInfinite/Client/Pages/CustomizeCard.razor
++++ b/WebUIInfinite/Client/Pages/CustomizeCard.razor
+@@ -103,7 +103,7 @@ else
+             </MudTabPanel>
+             *@
+ 
+-            @* Teams tab temporarily hidden; keep code for rollback.
++            @* exvs2-lobbies: Teams tab re-enabled - creating a team here is the online-tag invite (partner user id + invitation code) *@
+             <MudTabPanel Text="@localizer["teamtag"]">
+                 <WebUIInfinite.Client.Pages.Components.Customize.CustomizeTeamTagsTab
+                     CustomizeCardContext="@_customizeCardContext"
+@@ -111,7 +111,6 @@ else
+                     SaveTask="() => _teamSaver.Save(_customizeCardContext, _progressContext, Snackbar, StateHasChanged)"
+                     EnableImagePreview="@EnableImagePreview"/>
+             </MudTabPanel>
+-            *@
+             
+             <MudTabPanel Text="@localizer["gamepadconfig"]">
+                 <WebUIInfinite.Client.Pages.Components.Customize.CustomizeGamepad
+diff --git a/WebUIInfinite/Client/Pages/CustomizeCard.razor.cs b/WebUIInfinite/Client/Pages/CustomizeCard.razor.cs
+index 3709ff7..f37e4f8 100644
+--- a/WebUIInfinite/Client/Pages/CustomizeCard.razor.cs
++++ b/WebUIInfinite/Client/Pages/CustomizeCard.razor.cs
+@@ -42,7 +42,7 @@ public partial class CustomizeCard
+     [Inject] private DefaultStickerSettingFiller _defaultStickerSettingFiller { get; set; } = null!;
+     [Inject] private MobileSuitStickersSettingFiller _mobileSuitStickersSettingFiller { get; set; } = null!;
+     // [Inject] private CpuTriadPartnerFiller _cpuTriadPartnerFiller { get; set; } = null!; // Triad CPU Partner disabled (Q1=B)
+-    // [Inject] private TeamResponseFiller _teamResponseFiller { get; set; } = null!; // Teams tab temporarily hidden
++    [Inject] private TeamResponseFiller _teamResponseFiller { get; set; } = null!; // exvs2-lobbies: Teams tab re-enabled (online tag)
+     [Inject] private GamepadConfigFiller _gamepadConfigFiller { get; set; } = null!;
+     [Inject] private TrainingProfileFiller _trainingProfileFiller { get; set; } = null!;
+     
+@@ -93,7 +93,7 @@ public partial class CustomizeCard
+         await _defaultStickerSettingFiller.Fill(_customizeCardContext);
+         await _mobileSuitStickersSettingFiller.Fill(_customizeCardContext);
+         // await _cpuTriadPartnerFiller.Fill(_customizeCardContext); // Triad CPU Partner disabled (Q1=B)
+-        // await _teamResponseFiller.Fill(_customizeCardContext); // Teams tab temporarily hidden
++        await _teamResponseFiller.Fill(_customizeCardContext);
+         await _gamepadConfigFiller.Fill(_customizeCardContext);
+         await _trainingProfileFiller.Fill(_customizeCardContext);
+     }
+@@ -120,7 +120,7 @@ public partial class CustomizeCard
+         await _defaultStickerSettingSaver.Save(_customizeCardContext, _progressContext, Snackbar, StateHasChanged);
+         await _mobileSuitStickerSettingsSaver.Save(_customizeCardContext, _progressContext, Snackbar, StateHasChanged);
+         // await _cpuTriadPartnerSaver.Save(_customizeCardContext, _progressContext, Snackbar, StateHasChanged); // Triad CPU Partner disabled (Q1=B)
+-        // await _teamSaver.Save(_customizeCardContext, _progressContext, Snackbar, StateHasChanged); // Teams tab temporarily hidden
++        await _teamSaver.Save(_customizeCardContext, _progressContext, Snackbar, StateHasChanged);
+         await _gamepadConfigSaver.Save(_customizeCardContext, _progressContext, Snackbar, StateHasChanged);
+         await _TrainingProfileSaver.Save(_customizeCardContext, _progressContext, Snackbar, StateHasChanged);
+         
+-- 
+2.47.3
+
+
+From 0e7ec86f35d24461efb049eb1ae6b3eae7015728 Mon Sep 17 00:00:00 2001
+From: ServerOmega <69215510+ServerOmega@users.noreply.github.com>
+Date: Fri, 13 Nov 2026 19:17:13 -0800
+Subject: [PATCH 11/11] ONLINE_MATCHMAKING.md: online tag / partner recruit
+ (pair worlds, LoadCard tag_teams, WebUI invite, OnlineTag config)
+
+---
+ ONLINE_MATCHMAKING.md | 37 +++++++++++++++++++++++++++++++++++++
+ 1 file changed, 37 insertions(+)
+
+diff --git a/ONLINE_MATCHMAKING.md b/ONLINE_MATCHMAKING.md
+index 65ee897..81e88cd 100644
+--- a/ONLINE_MATCHMAKING.md
++++ b/ONLINE_MATCHMAKING.md
+@@ -14,6 +14,9 @@
+ | MMS `/match` (`/mms` alias) | Ping, IssueNodeId → `[1]`, MatchingSetting; everything else `ERR_SERVER` | IssueNodeId → unique persisted ids (≥ issue_count); **EntryMatching / CheckMatching / CancelMatching** with an in-memory 2v2 matchmaker |
+ | Matchmaker | — | per-mode queues (world id + attrs), solo shuffle, fixed pairs never split, CPU stand-ins, ranked (worlds 13/14) bucketed by class with level band widening 0→1→2→any at 0/15/35/60 s, blacklists, optional 1v1/2v1 after `FillAfterSeconds` |
+ | LoadClassMatch | 1 unix-time schedule row, empty pattern & search-ratio tables | hour row (0–27) **and** unix row → pattern 1; grade→level pattern rows for classes 1–4; search ratios; request table |
++| Online tag (world 5) / partner recruit (21/22) | ordinary 4-seat worlds, pair key ignored | **pair** rooms: exactly 2 cabinets, same pair key (5) / class (22), both group 0; see "Online tag" below |
++| LoadCard `tag_teams` (36) | never filled → empty online-tag list | the card's tag teams, `partner_id` = partner's pilot id |
++| WebUI Teams tab | hidden; invite code checked only by the browser | re-enabled; the server checks the partner's invitation code, one-time by default |
+ | SaveVsmOnResult | badge only | also stores Class Match `after_rate`, class, grade and class win/lose (OMM_CLASS) |
+ | PreLoadCard | `grade_solo/team` always 0 | returns the stored grade |
+ | DB | — | migration `AddClassMatchGrade` (adds `Grade` to both class-record tables) |
+@@ -25,6 +28,7 @@
+ # Linux host:                      dotnet build Server-Infinite -p:LinuxHost=true -o out && cd out && dotnet Server-Infinite.dll
+ # Cross-check Windows build on Linux: dotnet build Server-Infinite -p:EnableWindowsTargeting=true -r win-x64
+ # Matchmaker unit tests:           dotnet test Tests/Matchmaking.Tests
++# Online tag end to end (fake cabinets + fake cards): server-sketch/loadtest/online_tag_e2e.py (exvs2-lobbies repo)
+ ```
+ .NET 9 SDK required. Note `.gitignore` excludes `wwwroot/` image resources (needed only for the web UI).
+ 
+@@ -108,6 +112,36 @@ server serves cabinets from any number of stores / LMs and home setups at once,
+   in-store worlds 15/16 are also keyed by the shop site: `ShopKeys` name > STUN public IP > LAN/overlay realm >
+   request source. Different stores never meet in in-store mode; they still meet in the online modes.
+ 
++## Online tag / partner recruit (2026-11-13, exvs2-lobbies `analysis/partner-invites.md`) — fake cabinets only
++How the game does "play with a specific partner from another shop" (オンラインタッグ, online tag), from static analysis:
++the partner relationship is a **tag team stored on the card server**; there is no in-game code entry. The cabinet
++lists the card's tag teams, the player picks one, and both cabinets search MMS **world 5** with
++`attr2 = pair key = min(own pilot id, partner_id)`; the lower pilot id is the leader. After the two cabinets find
++each other, they pair over P2P and only the **leader** sends a normal team entry (`groups=[partner]`, e.g. Mix 23 or
++Class 14), which matches like any other team.
++
++| Piece | What this patch does |
++|---|---|
++| Invite (WebUI **Teams** tab, re-enabled) | Player A enters partner B's **User ID** + B's **Invitation Code** → a tag team A+B on the server. The server now checks the code itself (upstream trusted the WebUI), refuses a team with yourself / a duplicate / more than 20 per card, and (default) B gets a new code after it was used (`OneTimeInviteCode`). A new team no longer crashes the tab (BGM 0). |
++| `LoadCard.MobileUserGroup.tag_teams` (36) | Filled for both partners: `id` = team id (same on both cards), `partner_id` = the partner's **pilot id** (= card id, the value the partner's cabinet uses as its own pilot id), `tag_status` = `OnlineTag.TagStatus` (default 0), partner name/level/class, `group_tag_point`. Log: `LoadCard online tag: CardId=… tag_teams=N … key K` |
++| Matchmaker world 5 (online tag) | **Pair** rule: exactly two solo cabinets with the same `(game, version, attr1, pair key)` → one room with both clients, **both group 0**, leader (lower am_id) first, the same list for both. Never short rooms, never CPU stand-ins; pair key 0 never pairs; NG lists (`bl_banapassport_am_ids`, `bl_loc_ids`), same card, same cabinet and network realms respected; the cabinet's timeout (90 s; 90 if it sends 0) then `MATCH_CANCELED`; cancel works as usual. Log: `MATCH room=… online-tag pair [n1,n2] key=K am=[a,b]`; `TAG-WARN` if the key is 0 or ≠ the lower am_id |
++| Worlds 21 / 22 (partner recruit 急募) | Same pair rule: 21 casual = one first-come pool, 22 ranked = keyed by team class (attr2). Lower node id first (the game's recruit leader rule is unknown). No widening across classes yet |
++| Team entries in worlds 5/21/22 | Refused (`ERR_MATCH_CONDITION`): those codes never send groups |
++| Team search after pairing | Unchanged team logic. A team entry that re-uses the node + apply_id of its finished pair search is no longer answered with the old 2-cabinet pair room |
++
++Config (`CardServerConfig.OnlineTag`):
++```json
++"OnlineTag": {
++  "SendTagTeams": true,       // fill LoadCard tag_teams (36)
++  "TagStatus": 0,             // TagTeamGroup.tag_status (meaning unknown): try 0, then 1 if the online-tag list stays empty
++  "MaxTeams": 20,
++  "OneTimeInviteCode": true   // the partner's invitation code changes after a team is created with it
++}
++```
++Tests: `Tests/Matchmaking.Tests/OnlineTagTests.cs` (15) and `server-sketch/loadtest/online_tag_e2e.py` (card + WebUI
++API + MMS end to end, 28 checks). **Cross-card-server tags are not supported yet:** pilot ids are each server's DB row
++ids, so two servers' ids collide (partner-invites.md §6 Step C). Both partners must use the **same card server**.
++
+ ## Real-game results (2026-11-13, times PT)
+ Setup: two IB cabinets (POC) on one Windows 11 PC, each with its own IP and its own card server; cab1's card
+ server (a second instance on another port) had `MatchUrl` pointing at the main server's `/match` (split setup), cab2 used the main server
+@@ -138,3 +172,6 @@ directly. Built-in STUN on the main server.
+ * Matchmaker state is in memory; restart drops waiting players (node ids persist, their polls get MATCH_CANCELED).
+ * A room is never refilled or torn down when a member drops after the match: the protocol has no message for it.
+ * Ranked results are saved per card (`SaveVsmOnResult`); a side that never reports simply records nothing.
++* Online tag / recruit: the CheckMatching shape the game expects for worlds 5/21/22 (2 clients, both group 0) is a
++  guess; `tag_status` meaning unknown; recruit leader rule unknown; tags only within one card server (ids collide
++  across servers). Untested in the real game.
 -- 
 2.47.3
 

@@ -2,7 +2,13 @@
 
 Status: **static analysis only, untested in game.** VAs are for `vsac29_Release.exe` (file offset = VA − 0x140000C00).
 Confidence: **[C]** confirmed in code, **[H]** high, **[M]** medium, **[L]** low/guess.
-Companion docs: `matchmaking.md` (protocol), `ranked-matching.md` (Class Match G), `matchmaking-server-design.md`.
+Companion docs: `matchmaking.md` (protocol), `ranked-matching.md` (Class Match G), `matchmaking-server-design.md`, `partner-invites.md` (online tag / partner recruit).
+
+> **Correction (2026-11-13, from `partner-invites.md` §2):** play-mode **4 = Fes** (フェス, codes 0x11–0x15) and
+> play-mode **5 = Custom** (カスタム, codes 3–7; sub-type from Cpn+0x28: 1 event, 2 private, 4 public), from the debug
+> name table 0x14087d5e0 and 0x140792dd0 [C]. Earlier versions of this file had them swapped/merged (§2 table fixed).
+> Worlds 5 / 21 / 22 are online tag / casual partner recruit / ranked partner recruit (pair searches), not
+> generic modes.
 
 ## 1. Official mode list (IB)
 Source: https://gundam-vs.jp/extreme/ac2ib/howto/game_mode/online/ (read 2026-11-13). Menu order:
@@ -32,8 +38,8 @@ Source: https://gundam-vs.jp/extreme/ac2ib/howto/game_mode/online/ (read 2026-11
 | 1 | Class Match G [H] | 0x0a | 0x0b | 13 / 14 |
 | 2 | **Mix Match** [H-M] | 0x0f | 0x10 | **23 / 23** (one pool) |
 | 3 | In-store match [H] | 0x0c | 0x0d | 15 / 16 |
-| 4 | Custom/free match, sub = room type [M] | 0x11; sub2→0x14; sub3→0x13 | 0x12; sub2→0x15 | 18; sub2→25; sub3→20 / 19; sub2→25 |
-| 5 (menu 14) | tag / event room [M] | 0x03; sub2→0x05; sub3→0x07 | 0x04; sub2→0x06 | 26/6/override; 24/32/override; 33 / 27/7/override; 24 |
+| 4 | **Fes** (フェス) [C] (was listed as custom/free) | 0x11; sub2→0x14; sub3→0x13 | 0x12; sub2→0x15 | 18; sub2→25; sub3→20 / 19; sub2→25 |
+| 5 (menu 14) | **Custom** (カスタム): event / private / public room [C] (was listed as tag/event) | 0x03; sub2→0x05; sub3→0x07 | 0x04; sub2→0x06 | 26/6/override; 24/32/override; 33 / 27/7/override; 24 |
 | 6 (menu 15) | shop-setting match [L] | 0x0c | 0x0e | 15 / 17 |
 | other | — | 0x0c | 0x0d | 15 / 16 |
 
@@ -136,8 +142,8 @@ These are in `proto/from_exe/game_server_nue.proto`. Their effects are inferred 
 ## 9. Open questions for a live test
 1. Does a 4-solo room (no "N" entries) start a 2v2 with the server-chosen teams? (Expected yes [H].)
 2. 1v1 / 2v1 rooms: do the cabinets fill the seats with CPUs, or do they reject/hang?
-3. Fixed pair: does the partner cabinet send its own EntryMatching, only poll, or neither (host-only)?
-4. Exact menu meaning of play-modes 4/5/6 and the sub-modes (custom room types vs tag rooms).
+3. Fixed pair: does the partner cabinet send its own EntryMatching, only poll, or neither (host-only)? Static answer in `partner-invites.md` §3.2: only the leader sends the team entry [H].
+4. Exact menu meaning of play-modes 4/5/6 and the sub-modes. Partly answered: 4 = Fes, 5 = Custom (see correction at the top); 6 still unknown.
 5. What populates `+0x71c` (the server-given world) and Cpn+4 (attr2 of tag worlds): PreLoadCard.matching_tag?
 6. The meaning of the kind-1 extra params {2, 400} and of `[0x14257b7a0]+0x4e4` (the Mix "veteran" input).
 7. Does the client accept a CheckMatching in which its own "N" CPU is missing for a team-sortie entry?

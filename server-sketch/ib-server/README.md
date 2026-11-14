@@ -25,13 +25,13 @@ Needs the .NET 9 SDK (`yay -S dotnet-sdk` on Arch; on Windows install .NET 9 SDK
 ```bash
 git clone https://github.com/Chiang-17/EXVS2-IB-Server && cd EXVS2-IB-Server
 git checkout 7f4b280
-git am /path/to/exvs2-matchmaking/server-sketch/ib-server/online-matchmaking.patch    # creates 7 commits
+git am /path/to/exvs2-matchmaking/server-sketch/ib-server/online-matchmaking.patch    # creates 11 commits
 
 # Windows server (like upstream's release):
 dotnet publish Server-Infinite -c Release -r win-x64
 # or Linux server:
 dotnet build Server-Infinite -c Release -p:LinuxHost=true -o out
-# matchmaker unit tests (41 tests):
+# matchmaker unit tests (56 tests):
 dotnet test Tests/Matchmaking.Tests
 ```
 Copy your existing `ServerInfinite.db` next to the new build if you want to keep cards; the new migration
@@ -59,6 +59,18 @@ In `Configurations/server.json` under `CardServerConfig` → `OnlineMatching`:
 | `NetworkRealms` | `""` | players in different network realms (Radmin 26/8, Hamachi 25/8, 100.64/10, private = lan, rest = internet) are never matched together; `"off"` or `"name=cidr,..."` ([lm-and-online.md](../../analysis/lm-and-online.md)) |
 | `InStoreScope` / `ShopKeys` | `Site` / `""` | in-store match (worlds 15/16) only within one shop: shop code + the shop's public IP (`ShopCode` = code only). `ShopKeys` names a shop on several IPs: `"SHOPA=203.0.113.10/32 203.0.113.11/32"` |
 | `VerboseLog` | `false` | also log every CheckMatching poll (address/NAT lines are always logged once per entry / match) |
+
+Online tag (play with a chosen partner from another shop) has its own section, `CardServerConfig` → `OnlineTag`:
+
+| key | default | meaning |
+|---|---|---|
+| `SendTagTeams` | `true` | send the card's tag teams in `LoadCard.MobileUserGroup.tag_teams` (36): the online-tag list |
+| `TagStatus` | `0` | `TagTeamGroup.tag_status` (meaning unknown): try 0; if the online-tag list stays empty in the game, try 1 |
+| `MaxTeams` | `20` | teams per card in that list |
+| `OneTimeInviteCode` | `true` | the partner's invitation code changes after a team is created with it |
+
+How it works and how a player invites a partner: [`docs/SETUP.md` B5](../../docs/SETUP.md#b5-invite-a-partner-online-tag)
+and [`analysis/partner-invites.md`](../../analysis/partner-invites.md).
 
 Environment variables work too and win over `server.json`: `CardServerConfig__OnlineMatching__Enabled=true`.
 
@@ -94,6 +106,13 @@ matchmaker bugs found and fixed in this patch: double room on a repeated entry, 
 cabinet, ghost matches of cabinets that stopped polling, partner got ERR_MATCH_NOENTRY instead of
 MATCH_CANCELED, one cabinet waiting in two queues at once, wall-clock-based timers.
 
+Online tag 2026-11-13 (`../loadtest/online_tag_e2e.py`, fake cards + fake cabinets, Linux build): WebUI invite by
+user id + code (wrong code / self / duplicate / reused code refused, code rotates), `LoadCard` tag_teams parses
+strictly on both partners with `partner_id` = partner's pilot id, two tag pairs each form a 2-client world-5 room
+(both group 0, leader first), mismatched keys never pair and get MATCH_CANCELED at the timeout, the two leaders'
+team entries then match 2v2 with each pair on one side, casual recruits pair, ranked recruits of different classes
+don't: 28/28 checks. The re-enabled WebUI Teams tab was checked in headless Chrome (renders, ADD creates the team).
+
 Real game 2026-11-13: see [`../../analysis/real-game-test-2026-11-13.md`](../../analysis/real-game-test-2026-11-13.md)
 (STUN bind fix, badge clamp, FillAfterSeconds 15, CPU stand-in experiment, results-screen hang).
 
@@ -104,3 +123,5 @@ Real game 2026-11-13: see [`../../analysis/real-game-test-2026-11-13.md`](../../
 * Matchmaker state is in memory (a restart drops waiting players); hidden MMR from the Python sketch is not ported
   (no reliable link between MMS am_id and card id yet) — ranked pairs by class + level only.
 * The client is trusted for rate/grade (only NaN/out-of-range rates are rejected).
+* Online tag / partner recruit are untested in the game; tags work only when both partners use the same card
+  server (pilot ids are per-server DB ids).

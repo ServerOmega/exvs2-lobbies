@@ -58,6 +58,12 @@ Minimum for a matchmaker with built-in STUN:
 | `CpuStandInSeats` | **Experimental**, leave `false`. Lists a CPU client for each empty seat; it did not fix the results-screen hang. |
 | `PollingIntervalSeconds`, `StaleAfterSeconds`, `NetworkRealms`, `InStoreScope`, `ShopKeys`, `VerboseLog` | Optional; see the [config reference](../server-sketch/ib-server/README.md#configure). |
 
+Online tag (players inviting a chosen partner, B5) is on by default and has its own section, `CardServerConfig` →
+`OnlineTag`: `SendTagTeams` (true), `TagStatus` (0; try 1 if players' online-tag list stays empty), `MaxTeams` (20),
+`OneTimeInviteCode` (true = a partner's invitation code changes after it was used). The player-facing part is the
+card server's web page (WebUI, same address and port as the card server, e.g. `http://<host>:28080/`), so players
+who want to invite partners need to reach it.
+
 Any key can also be set with an environment variable, which wins over the file, e.g.
 `CardServerConfig__OnlineMatching__FillAfterSeconds=10`.
 
@@ -146,7 +152,29 @@ card-server instance, one directly on the matchmaker; they matched and played).
 3. Cancelling in the game's search screen works and leaves the queue.
 4. After the match, results (class-match rate, badge) are saved to **your own** card server.
 
-### B5. Troubleshooting
+### B5. Invite a partner (online tag)
+> ⚠️ Built and tested with fake cabinets only (2026-11-13); **not yet tried in the real game**. Both of you must use
+> the **same card server** for now (player ids are per server; cross-server invites are a later step).
+
+Online tag (オンラインタッグ) lets two players in different shops / homes play as a fixed team. There is no code to type
+in the game: the team is made on the card server's web page first.
+
+1. **Your partner** opens the card server's web page (`http://<card server>:28080/`), logs in with their card's access code (keep that one private), opens
+   **Customize → Teams**, and sends you the two values under *Your Information*: **Your User ID** and
+   **Your Invitation Code**. (Share them privately; the code works once and then changes.)
+2. **You** open your own card's **Customize → Teams**, enter them under *Add Team* as **Friend's User ID** and
+   **Friend's Invitation Code**, and press **ADD**. The team (default name "EXTREME TEAM") appears for both of you;
+   you can rename it there and press save.
+3. Both of you insert your cards (re-insert if you were already playing, so the game reloads the team list), pick the
+   online mode, choose **team sortie → online tag**, and select the team. Do it at roughly the same time: each
+   cabinet waits up to 90 s for the other.
+4. The server pairs your two cabinets (log: `MATCH room=… online-tag pair …`), then your team is matched against
+   other teams / players like a normal team (log: a team `entry` from the leader, then a `MATCH` 2v2).
+
+If the online-tag list is empty in the game, tell the server host: they can try `OnlineTag.TagStatus: 1`.
+Partner recruit (パートナー急募, random partner) also pairs two players now, but is even less tested.
+
+### B6. Troubleshooting
 | Symptom | Likely cause / fix |
 |---|---|
 | No `NET register-pcb` line for your cabinet | the cabinet isn't talking to this card server: check the address/port (SnowLauncher: local server on 28080), firewall |
@@ -154,6 +182,8 @@ card-server instance, one directly on the matchmaker; they matched and played).
 | Stuck searching; `NET entry ... class=stun-missing` or a `NET-WARN ... no STUN global address` | STUN not reachable: UDP 3478/3479 blocked or forwarded wrong, or `StunHost` isn't the host's reachable IP (on a multi-adapter host it must be one of its own IPs) |
 | `entry ...` lines but never `MATCH` | players are in different modes, or in different network realms (e.g. one on Radmin, one on the internet — they can never reach each other), or only one player queued |
 | `MATCH` but the battle never starts | P2P UDP between players is blocked: firewall on the game exe, strict/CGNAT NAT without UDP 48000 forwarded → use an overlay VPN |
+| Online tag: no team to pick in the game | team not created in the WebUI (B5), card read before the team was made (re-insert the card), or the game expects another `OnlineTag.TagStatus` (try 1). Log: `LoadCard online tag: … tag_teams=0` |
+| Online tag: `entry online-tag` for both but no `online-tag pair` | the two cabinets sent different pair keys (`key=` in the entry lines): different card servers, or a `TAG-WARN` explains it; or they didn't search at the same time (90 s each) |
 | Results screen hangs for minutes after a versus match | **known issue with two cabinets on one PC** (also happens in local LM mode without any matchmaker); the games recover by themselves. Not seen with a solo match; separate-machine test pending ([report](../analysis/real-game-test-2026-11-13.md#4-results-screen-hang-open)) |
 
 Running two cabinets on one PC for testing: see the recipe in

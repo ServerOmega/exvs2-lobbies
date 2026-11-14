@@ -43,7 +43,7 @@ Tick items off as they're verified, and note results/captures next to them. Firs
 - [x] 1v1 / 2v1 rooms: the game plays them; the CPU partner is added by each cabinet locally (2026-11-13). `CpuStandInSeats` (server lists CPU seats) also accepted but changes nothing visible; off by default
 - [x] `FillAfterSeconds`: 30 too slow for 2 players, 3 fine on a LAN; default now 15
 - [ ] Fixed pair: does the partner cabinet send its own entry, only poll, or neither?
-- [ ] Record the in-game menu names of play modes 4, 5, 6 and their sub-modes
+- [ ] Record the in-game menu names of play modes 4, 5, 6 and their sub-modes (static analysis: 4 = Fes, 5 = Custom; 6 unknown)
 - [ ] Team sortie with a CPU partner: is a result that omits the CPU entry accepted?
 
 ## Ranked (Class Match)
@@ -52,6 +52,27 @@ Tick items off as they're verified, and note results/captures next to them. Firs
 - [ ] How opponents' rank/grade is exchanged and displayed (P2P capture)
 - [x] After a match, `SaveVsmOnResult` uploads the new rate (HTTP 200 on each cabinet's own card server, 2026-11-13); badge exp went negative after a loss → clamped at 0
 - [ ] Next card read (`PreLoadCard`) shows the stored rate/grade in the Class Match screen
+
+## Online tag / partner recruit ([analysis/partner-invites.md](analysis/partner-invites.md))
+Box, fake cabinets + fake cards (2026-11-13): 15 unit tests + `server-sketch/loadtest/online_tag_e2e.py` 28/28 —
+everything below the line is for the **real game**. Both cabinets on the **same card server**; server built from
+the online-tag patch. Keep the server log lines named in each item.
+- [x] Box: WebUI invite (user id + code; wrong / self / duplicate / reused code refused; code rotates), LoadCard tag_teams on both partners, world-5 pairing, mismatched keys + timeout, two tag pairs → 2v2, casual recruit pair, ranked recruit by class
+- [ ] Create a tag team in the WebUI (Customize → Teams: partner's User ID + Invitation Code → ADD); both cards show it in the WebUI
+- [ ] Insert both cards: log `LoadCard online tag: CardId=… tag_teams=1 tag_status=0 [team T partner P key K]` for each
+- [ ] In the game, team sortie → **online tag** shows the team. If the list is empty: set `OnlineTag.TagStatus: 1`, restart, re-insert; record which value works
+- [ ] Both pick the team: one `entry online-tag … key=K` per cabinet with the **same K = lower pilot id**; then `MATCH room=… online-tag pair [n1,n2] key=K am=[a,b]` and no `TAG-WARN`. Note whether am_id equals the pilot id
+- [ ] After the pair room: do the cabinets connect to each other (P2P) and show "team formed"? Or do they reject the 2-client CheckMatching (record what the screen says, and capture CheckMatching with Wireshark)
+- [ ] Then exactly **one** team entry from the leader (lower pilot id) with the partner in `groups` (`entry mix-match nodes=[leader,member] slots=2` or class-team), and the member only polls. Does the member re-run IssueNodeId first (new node id)?
+- [ ] That team then matches (vs another team or 2 solos; or 1v1-style after `FillAfterSeconds`) and the battle starts; `SaveVsmOnResult` carries `tag_team_id` / partner
+- [ ] Only one partner searches: after 90 s the cabinet gets `MATCH_CANCELED` (`drop … reason=matching timeout`); what does the game show (CAcSecPcbWantedFailer)?
+- [ ] One partner cancels while waiting: the other keeps waiting until its own 90 s; no room with a stranger
+- [ ] Two different tag teams searching at once never mix (different `key=`)
+- [ ] Results screen after a tag match (same hang as other 2-cabinet matches on one PC?)
+- [ ] Partner recruit (急募) casual: two cabinets → `MATCH … recruit-casual pair`; who becomes leader (first listed = lower node id?); line_type PAIR_LEADER / PAIR_MEMBER in CheckCommunication
+- [ ] Partner recruit ranked (Class Match): same class pairs (`recruit-ranked … key=…|class`), different classes don't
+- [ ] Instant team (即席チーム) after a solo win: confirm no new server request is needed
+- [ ] Later: tag partners on **different** card servers (needs globally unique pilot ids, partner-invites.md §6 Step C)
 
 ## Lobbies / Custom Match
 - [ ] Press Custom Match with the LM running and log what the game requests
