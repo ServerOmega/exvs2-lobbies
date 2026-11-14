@@ -10,6 +10,9 @@ The card server this builds on ([Chiang-17/EXVS2-IB-Server](https://github.com/C
 pinned commit `7f4b280` (v1.2.0) from GitHub on the user's own PC, applies the patch and builds it there.
 No upstream source and no compiled server is uploaded anywhere.
 
+Our scripts and instructions in the package are GPL-3.0 (`package/LICENSE.txt`). The card server and
+`online-matchmaking.patch` are **not** covered; see the License section of the main README.
+
 | File | What it does |
 |---|---|
 | `1-Build-Server.bat` → `scripts/build-server.ps1` | portable git (MinGit, SHA-256 checked) and .NET 9 SDK (`dotnet-install.ps1`, local folder) if missing, download upstream @ 7f4b280, `git apply` the patch, `dotnet publish -r win-x64` (self-contained single exe), lay out `server/` keeping existing `Configurations/*.json` and `ServerInfinite.db`; optional copy of WebUI pictures / DB from an official v1.2.0 folder |

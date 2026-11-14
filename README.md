@@ -76,5 +76,19 @@ tools/re/            Reverse-engineering helper scripts (no game binary, no cach
 
 ## License
 
-No license is offered. All rights in the notes and sketches remain with the author.
-Game assets and trademarks belong to their owners.
+Copyright (C) 2026 ServerOmega.
+
+The original work in this repository (scripts, tools, simulators, tests, the Python
+prototype and C# sketches, docs, notes and analysis) is licensed under the
+**GNU General Public License v3.0** — see [LICENSE](LICENSE).
+
+**Not covered by this license:**
+
+- **Chiang-17/EXVS2-IB-Server** (the card server) and any of its code. Upstream has no
+  license; all rights remain with its author. Nothing from it is relicensed here.
+- **`server-sketch/ib-server/online-matchmaking.patch`** and
+  **`release/package/files/online-matchmaking.patch`**. These patches contain upstream
+  context lines and only make sense applied to the card server above, so they are
+  excluded from the GPL grant and offered as-is for personal use against your own copy.
+- **The game, its data, images and trademarks** (Bandai Namco / Sunrise). None of these
+  are included in this repository.
