@@ -22,6 +22,7 @@ Goal: MBON-style lobbies / large-pool online play for EXVS2 Infinite Boost.
   `testmode_pcb.json` setting entry has `battleMode: 0`; every other battleMode → in-store LAN.
 - Play mode 1..6 (`[0x14257b7a0]+0x4cc`) → WAN mode code 0x03..0x15 (§7.3).
 - NAT test failure does **not** block entry (§7.4). request_id/type are **not** checked; only HTTP 200 + `code==0` (§7.5).
+- **Real game 2026-11-13:** two cabinets on one PC matched and played online through the patched card server (battleMode 0, built-in STUN); STUN bind fix + badge clamp; results-screen hang after 2-cabinet versus matches also happens without the matchmaker → not a server bug. See `analysis/real-game-test-2026-11-13.md`.
 
 ## Restored 2026-11-13
 - `binaries/vsac29_Release.exe` (md5 a5cdf4cf5a0922872ced752865424c85, copied back with user approval).

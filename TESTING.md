@@ -1,20 +1,22 @@
 # Test checklist
 
-Everything here is **untested in the real game**. Tick items off as they're verified, and note results/captures next to them.
+Tick items off as they're verified, and note results/captures next to them. First real-game test: **2026-11-13**, two cabinets on one PC — see [Real-game results](#real-game-results-2026-11-13) and [analysis/real-game-test-2026-11-13.md](analysis/real-game-test-2026-11-13.md).
 
 ## Setup (do first)
-- [ ] Back up `testmode_pcb.json`, then set `battleMode: 0` in the active entry with `_re/tools/svd1.py`; confirm the game switches to online (WAN) matching and no longer uses the LM
+- [x] Back up `testmode_pcb.json`, then set `battleMode: 0` in the active entry with `_re/tools/svd1.py`; confirm the game switches to online (WAN) matching and no longer uses the LM — **confirmed 2026-11-13**
 - [ ] Confirm the game binds to the correct network adapter / IP (currently Radmin VPN); use the hook's `IpAddress=` — without it the exe skips adapters whose name contains "2"/"Loopback" ([analysis/networking-issues.md](analysis/networking-issues.md))
 - [ ] Windows: no leftover Block rules for `vsac29_Release.exe` in wf.msc; game/overlay adapter set to Private
 - [ ] First real entry: read the `NET entry` line for each player (`local` = the hook's IP, `global` from STUN, no `stun-missing`, no unexpected `MISMATCH`). See [networking-issues.md §6](analysis/networking-issues.md#6-reading-the-network-log)
-- [ ] Get a card server whose RegisterPcb returns the match server `uri` plus a SRV_STUN entry; confirm IssueNodeId hits our server — build the patched EXVS2-IB-Server from [`server-sketch/ib-server`](server-sketch/ib-server/README.md) (box-tested with fake cabinets only)
+- [x] Get a card server whose RegisterPcb returns the match server `uri` plus a SRV_STUN entry; confirm IssueNodeId hits our server — patched EXVS2-IB-Server from [`server-sketch/ib-server`](server-sketch/ib-server/README.md), built-in STUN, 2026-11-13 ([results](analysis/real-game-test-2026-11-13.md))
 
 ## Basic matchmaking
 - [x] Box load test with 100 / 200 / 500 fake cabinets against both matchmakers — no invariant violations after fixes ([analysis/load-test.md](analysis/load-test.md)); fake cabinets only
 - [x] Box disconnect/rejoin test (14 probes + 150-person run with mass drop and server restart) — 6 bugs fixed, 14/14 probes pass on both servers ([analysis/disconnect-test.md](analysis/disconnect-test.md)); fake cabinets only
 - [ ] Real game: what the cabinet does on MATCH_CANCELED vs ERR_MATCH_NOENTRY, and when a room member drops right after matching
-- [ ] EntryMatching + CheckMatching polling reaches the matchmaker (built-in `/match` or `mms_server.py`; capture with tcpdump)
-- [ ] A matched room actually starts a battle; capture the cabinet-to-cabinet (hole-punch / P2P) packet format. Keep the `MATCH-NET` line for that room (which address each pair dialled)
+- [x] EntryMatching + CheckMatching polling reaches the matchmaker (built-in `/match`; 2026-11-13). `mms_server.py` not tried in game
+- [x] A matched room actually starts a battle (two cabinets on one PC, 2026-11-13; full matches in Mix Match and Class Match solo)
+- [ ] Capture the cabinet-to-cabinet (hole-punch / P2P) packet format between **two machines**; keep the `MATCH-NET` line for that room
+- [ ] Results screen hangs after every 2-cabinet versus match (also in local LM mode, no matchmaker): retest with cab2 in Windows Sandbox and on two real PCs
 - [x] Box: one server for LM-store, home and multi-LM players (`server-sketch/loadtest/lm_mix.py`, 14 fake players): 14/14 matched on both servers after the serial+IP fix (3/14 before). Fake cabinets only ([analysis/lm-and-online.md](analysis/lm-and-online.md) §4)
 - [ ] Real game, LM store: find **where battleMode is set**: on the LM machine (`testmode_lm.json` / LM test menu, pushed to the cabinets) or on each cabinet (`testmode_pcb.json`)? Which file / menu, and does a cabinet's own value survive an LM sync? Use backups and `svd1.py`; no EXIT & SAVE
 - [ ] Real game, LM store: what the **LM machine itself** does when battleMode is 0 (still in-store/LAN lobby? stays idle? any HTTP to the card server or MMS? capture with tcpdump)
@@ -30,11 +32,16 @@ Everything here is **untested in the real game**. Tick items off as they're veri
 - [ ] Real game, same setup: during an online battle, is any traffic sent to the LM's VPN IP? Does a 30 s VPN outage drop the match?
 - [ ] Real game: two cabinets of one LM in the same online room (same NAT) dial each other's VPN IP (`MATCH-NET` local same-NAT); battle starts
 - [ ] Real game: LM over Tailscale (no broadcast). Expected to fail at Find LM; confirm
-- [ ] Play modes 1–6 land in separate queues; `battleMode` values other than 0 still use the LM path
+- [x] Per-mode queues: Mix Match (world 23) and Class Match solo (world 13) stay separate (2026-11-13); other modes not yet tried
+- [x] `battleMode` other than 0 still uses the LM path (local LM matches work, 2026-11-13)
+- [x] In-game cancel while searching sends CancelMatching and leaves the queue (2026-11-13)
+- [x] Split setup: cabinet's own card server ≠ matchmaker (`MatchUrl` → main server); the two cabinets matched (2026-11-13)
+- [x] Built-in STUN on a multi-homed Windows server PC: replies must leave from `StunHost` (fixed: bind to it), 2026-11-13
 
 ## Casual / shuffle
 - [ ] 4 solo cabinets start a 2v2 using the server-assigned teams (`group_id`)
-- [ ] 1v1 / 2v1 rooms: does the game fill empty seats with CPUs, reject, or hang?
+- [x] 1v1 / 2v1 rooms: the game plays them; the CPU partner is added by each cabinet locally (2026-11-13). `CpuStandInSeats` (server lists CPU seats) also accepted but changes nothing visible; off by default
+- [x] `FillAfterSeconds`: 30 too slow for 2 players, 3 fine on a LAN; default now 15
 - [ ] Fixed pair: does the partner cabinet send its own entry, only poll, or neither?
 - [ ] Record the in-game menu names of play modes 4, 5, 6 and their sub-modes
 - [ ] Team sortie with a CPU partner: is a result that omits the CPU entry accepted?
@@ -43,7 +50,8 @@ Everything here is **untested in the real game**. Tick items off as they're veri
 - [ ] Class Match menu appears with our `LoadClassMatch` tables
 - [ ] Which class ID values IB uses; does class 0 break anything?
 - [ ] How opponents' rank/grade is exchanged and displayed (P2P capture)
-- [ ] After a match, `SaveVsmOnResult` uploads the new rate and the next card read (`PreLoadCard`) shows it
+- [x] After a match, `SaveVsmOnResult` uploads the new rate (HTTP 200 on each cabinet's own card server, 2026-11-13); badge exp went negative after a loss → clamped at 0
+- [ ] Next card read (`PreLoadCard`) shows the stored rate/grade in the Class Match screen
 
 ## Lobbies / Custom Match
 - [ ] Press Custom Match with the LM running and log what the game requests
@@ -51,3 +59,28 @@ Everything here is **untested in the real game**. Tick items off as they're veri
 
 ## Housekeeping
 - [ ] Log-capture script for the user's launch method
+
+## Real-game results (2026-11-13)
+Times PT. Two cabinets (POC + SnowLauncher) on one Windows 11 PC, patched card server with in-process matchmaker
+and built-in STUN. Details and the two-cabinets-on-one-PC recipe: [analysis/real-game-test-2026-11-13.md](analysis/real-game-test-2026-11-13.md).
+
+**Works**
+* Online queueing via `battleMode: 0` + built-in STUN; RegisterPcb / IssueNodeId / Entry / Check / Cancel.
+* Split setup: cab1's card server was a second server instance whose `MatchUrl` pointed at the main matchmaker.
+* Two cabinets matched and played full matches in Mix Match and Class Match solo; per-mode queues; in-game cancel.
+* Results saved to each cabinet's own card server (class-match rate, badge).
+
+**Fixed during the test**
+* Built-in STUN on a multi-homed PC answered from the wrong source IP (the N2N adapter's) when bound to 0.0.0.0;
+  the game dropped those replies → now bound to `StunHost`.
+* Badge exp went 0 → −20 after a loss → clamped at 0.
+* `FillAfterSeconds` 30 felt slow; 3 works on a LAN → default 15 (10–15 recommended for a public server).
+
+**Open: results-screen hang after every 2-cabinet versus match**
+* Servers and network are fine: captures show every message answered and the cabinets staying in sync; both card
+  servers answered `SaveVsmOnResult` with 200. The games recover by themselves after a few minutes.
+* Holding Start does not clear it. Server-side CPU stand-in seats were sent but did not fix it.
+* It **also happens in local LM mode with no matchmaker**, with two LMs and with one shared LM.
+* A solo route battle vs CPU does **not** hang.
+* Conclusion: not caused by the matchmaking server; most likely two game instances on one OS interfering.
+  Pending: Windows Sandbox test (cab2 in the Sandbox, own network stack) and a real two-PC test.

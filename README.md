@@ -1,10 +1,12 @@
 # exvs2-matchmaking
 
-> ⚠️ **Experimental — work in progress. This does not function yet.**
+> ⚠️ **Experimental — work in progress.**
 >
-> Nothing here is a working online service. The matchmaking server is an untested sketch,
-> the C# handlers are uncompiled, and the in-game WAN path has not been tried on a real cabinet.
-> Do not expect to queue up and play from this repository today.
+> **2026-11-13: first real-game test.** Two cabinets on one PC queued online through the patched card server
+> (`server-sketch/ib-server`), matched, and played full matches; results were saved. Not yet tried between two
+> separate machines or over the internet, and the results screen hangs after every 2-cabinet versus match on one
+> PC (also without the matchmaker — see [the test report](analysis/real-game-test-2026-11-13.md)).
+> The Python MMS and the `server-sketch/csharp` handlers are still untested sketches.
 
 **Goal: one universal matchmaking server that everyone connects to.** Players at a store with an LM, players
 without an LM, and players at many different LMs all use the same server and can match each other wherever the
@@ -28,7 +30,8 @@ included. You must already have a copy of the game; this repo is notes, analysis
 | Research | `analysis/` — WAN/MMS + STUN protocol notes, LAN 16-slot limit, server design, [networking issues (Windows/NAT/VPN)](analysis/networking-issues.md), [LM + non-LM players on one server](analysis/lm-and-online.md), [LM over VPN, online over internet](analysis/lm-over-vpn-split.md) | Findings from static analysis; not proven in a live match |
 | Python MMS sketch | `server-sketch/python/` — stdlib HTTP protobuf prototype + fake cabinets | Exercised against simulated cabinets only, **not** against the game |
 | C# handler sketch | `server-sketch/csharp/` — IB-Server-style handlers + RegisterPcb notes | **Uncompiled**, not wired into a running server |
-| Card server patch (step 3) | `server-sketch/ib-server/` — patch for Chiang-17/EXVS2-IB-Server: RegisterPcb MATCH+STUN, in-process matchmaker, IB class-match tables, ranked result storage | Builds (Linux + win-x64), unit + fake-cabinet tests pass; **not tested with the game** |
+| Card server patch (step 3) | `server-sketch/ib-server/` — patch for Chiang-17/EXVS2-IB-Server: RegisterPcb MATCH+STUN, in-process matchmaker, built-in STUN, IB class-match tables, ranked result storage | Builds (Linux + win-x64), 41 unit tests pass; **real game 2026-11-13: two cabinets on one PC matched and played** ([report](analysis/real-game-test-2026-11-13.md)) |
+| Real-game test | [`analysis/real-game-test-2026-11-13.md`](analysis/real-game-test-2026-11-13.md) — results, fixes, results-screen hang investigation, two-cabinets-on-one-PC recipe | Two cabinets on one PC only |
 | Load test | `server-sketch/loadtest/` — 100–500 simulated cabinets against both matchmakers ([results](analysis/load-test.md)) | Fake cabinets only; found and fixed 7 matchmaker bugs |
 | STUN | `server-sketch/coturn/turnserver.conf` — STUN-only coturn example (TEST-NET placeholder IPs) | Config only; not deployed |
 | RE tooling | `tools/re/` — Capstone/pefile scripts for xrefs and scans | Source only; the venv and `xrefs.pkl` cache are not in this repo |
@@ -36,15 +39,15 @@ included. You must already have a copy of the game; this repo is notes, analysis
 
 A copy of the game executable is **not** in this repository and must never be added.
 
-## Key finding (untested in game)
+## Key finding (confirmed in game 2026-11-13)
 
 The WAN vs LAN switch is a **config change**, not an exe patch. If the active entry in
 `testmode_pcb.json` has `battleMode: 0`, the client takes the WAN path: HTTP protobuf MMS
 (rev 6) plus a standard RFC 5389/5780 STUN server. Any other `battleMode` stays on the
 shop/LM LAN path (16 terminal slots).
 
-This has been read out of the client; it has **not** been confirmed by running the game
-with `battleMode: 0`. Edit those testmode files only with the project's `svd1.py` tool,
+This was read out of the client and **confirmed in the real game on 2026-11-13** (two cabinets queued online,
+matched and played). Edit those testmode files only with the project's `svd1.py` tool,
 and only on a backup you can restore. Do not use "EXIT & SAVE" in the test menu.
 
 Other results, documented in `analysis/matchmaking.md`:
