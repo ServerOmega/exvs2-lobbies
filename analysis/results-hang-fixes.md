@@ -257,3 +257,6 @@ Usage on the PC, game closed: `powershell -ExecutionPolicy Bypass -File tools\ch
    whether the results screen still hangs. Compare with online tag (world 5) as teammates.
 4. LM mode: pick the teammates layout by hand.
 5. During a hang: the card key on one cabinet (fix 2 symptom check). The DLL patch stays a proposal.
+
+## 5. Follow-up
+Simulations of these fixes and new drafts (watchdog, log masking, LoadBlackList config, card-reader patch v2, hang probe): [results-hang-sim.md](results-hang-sim.md).

@@ -115,3 +115,16 @@ and built-in STUN. Details and the two-cabinets-on-one-PC recipe: [analysis/real
 * A solo route battle vs CPU does **not** hang.
 * Conclusion: not caused by the matchmaking server; most likely two game instances on one OS interfering.
   Pending: Windows Sandbox test (cab2 in the Sandbox, own network stack) and a real two-PC test.
+
+## Results-hang simulations (box, 2026-11-14 ~05:10 PT)
+Fake cabinets + fake cards only, PC offline, no game / DLL run. Details: `analysis/results-hang-sim.md`.
+* `server-sketch/sim/postmatch_replay.py` (post-match HTTP replay + fault proxy + SQLite lock): worst case 300.5 s only
+  when the server never answers; with a working server the gate stays at F (9.8 s); a 35 s DB lock holds S/C 35 s
+  (watchdog 8 s: 9.8 / 16.1 s).
+* `server-sketch/sim/hang_model.py` (F/S/A/C + card prompts + reader variants, 24 scenarios vs evidence E1–E8).
+* `tools/banapass-harness/build_and_test.sh`: patch applies, Windows syntax check OK, unit harness 32/32 as expected
+  (original / v1 / v2); v1 stale-cancel race found and fixed in v2.
+* `dotnet test Tests/Matchmaking.Tests`: **86/86** (13 `HangSimTests` + 10 `HumansVsCpuSimTests` runs of 6/24/120 cabinets).
+* `server-sketch/loadtest/hangsim_e2e.py`: off 6/6, on 6/6. Regression: `hangfix_e2e.py` off 10/10, on 15/15;
+  `online_tag_e2e.py` 28/28.
+
