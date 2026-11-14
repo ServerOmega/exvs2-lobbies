@@ -1,7 +1,8 @@
 # Step 3 — card server with online matchmaking (EXVS2-IB-Server patch)
 
-> ⚠️ **Experimental — not tested with the real game, not functioning yet.** Only tested on Linux with fake
-> cabinets (`../python/fake_cabinet.py`) and the smoke test in this folder. You must already have a copy of the game.
+> ⚠️ **Experimental.** First real-game test 2026-11-13: two cabinets on one Windows PC queued online, matched and
+> played full matches through this server (built-in STUN); results saved. Not yet tried between separate machines.
+> See [the test report](../../analysis/real-game-test-2026-11-13.md). You must already have a copy of the game.
 
 This patches [Chiang-17/EXVS2-IB-Server](https://github.com/Chiang-17/EXVS2-IB-Server) (Infinite Boost card
 server, v1.2.0, commit `7f4b280`) so that it:
@@ -14,7 +15,7 @@ server, v1.2.0, commit `7f4b280`) so that it:
 * can be built and run **on Linux** (`-p:LinuxHost=true`) as well as Windows.
 
 Upstream has **no license**, so it is not forked or redistributed here — only our changes, as a patch
-(`online-matchmaking.patch`, a `git format-patch` of the local branch `online-matchmaking`).
+(`online-matchmaking.patch`, a `git format-patch 7f4b280..online-matchmaking` of the local branch; 7 commits).
 Full change list and config reference: `ONLINE_MATCHMAKING.md` inside the patch.
 
 ## Build
@@ -22,13 +23,13 @@ Needs the .NET 9 SDK (`yay -S dotnet-sdk` on Arch; on Windows install .NET 9 SDK
 ```bash
 git clone https://github.com/Chiang-17/EXVS2-IB-Server && cd EXVS2-IB-Server
 git checkout 7f4b280
-git am /path/to/exvs2-matchmaking/server-sketch/ib-server/online-matchmaking.patch    # creates one commit
+git am /path/to/exvs2-matchmaking/server-sketch/ib-server/online-matchmaking.patch    # creates 7 commits
 
 # Windows server (like upstream's release):
 dotnet publish Server-Infinite -c Release -r win-x64
 # or Linux server:
 dotnet build Server-Infinite -c Release -p:LinuxHost=true -o out
-# matchmaker unit tests (37 tests):
+# matchmaker unit tests (41 tests):
 dotnet test Tests/Matchmaking.Tests
 ```
 Copy your existing `ServerInfinite.db` next to the new build if you want to keep cards; the new migration
@@ -41,10 +42,13 @@ In `Configurations/server.json` under `CardServerConfig` → `OnlineMatching`:
 |---|---|---|
 | `Enabled` | `false` | `true` = send SRV_MATCH (full URL) + SRV_STUN in RegisterPcb |
 | `MatchUrl` | `""` | `""` = built-in MMS `http://<host the cabinet used>/match`; or the external Python server, e.g. `http://203.0.113.10:5000/mms` |
-| `StunHost` / `StunPort` | `""` / `3478` | coturn address; use an IP literal. `""` = same host as the card server |
+| `StunHost` / `StunPort` | `""` / `3478` | STUN address; use an IP literal. `""` = same host as the card server |
+| `BuiltinStun` | `false` | `true` = run STUN inside this server (UDP `StunPort` and `StunPort+1`), no coturn needed; set `StunHost` to this PC's IP as cabinets reach it. The socket binds to `StunHost` when it is a local IP (multi-homed fix) |
+| `BuiltinStunPort` / `BuiltinStunAltPort` / `BuiltinStunAltIp` | `0` / `0` / `""` | `0` = `StunPort` / port+1; a second local IP enables full RFC 5780 change-IP tests |
 | `StunUser` / `StunPass` | `""` | only if coturn requires long-term credentials |
 | `PollingIntervalSeconds` | `3` | CheckMatching poll interval sent to the cabinet |
-| `FillAfterSeconds` / `AllowPartialRooms` | `30` / `true` | allow a 1v1 / 2v1 room after this wait |
+| `FillAfterSeconds` / `AllowPartialRooms` | `15` / `true` | allow a 1v1 / 2v1 room after this wait (3 is fine on a LAN; 10–15 for a public server) |
+| `CpuStandInSeats` | `false` | experimental: list a CPU client (owned by a cabinet) for each empty seat; did not fix the results-screen hang |
 | `SoftAttributeWaitSeconds` | `15` | time win-rate bucket / veteran flag must match in free/mix modes |
 | `StaleAfterSeconds` | `20` | drop a waiting cabinet that stopped polling (no ghost matches) |
 | `NodeIdStateFile` / `FirstNodeId` | `mms_nodeids.json` / `1000` | node ids are never reused |
@@ -60,7 +64,7 @@ Network log lines (`NET ...`, `NET-WARN ...`, `MATCH-NET ...`, `drop ... reason=
 [analysis/networking-issues.md §6](../../analysis/networking-issues.md#6-reading-the-network-log).
 
 ## Run the pieces
-1. **STUN**: `turnserver -c ../coturn/turnserver.conf` (UDP 3478 open; set `external-ip`).
+1. **STUN**: `BuiltinStun: true` (UDP 3478 + 3479 open), or coturn: `turnserver -c ../coturn/turnserver.conf` (set `external-ip`).
 2. **Card server + MMS**: start the patched server (port 28080 by default, `Configurations/kestrel.json`).
    Open TCP 28080 for other players' cabinets (card + `/match` traffic share the port).
 3. *(optional)* external matchmaker instead of the built-in one: `python3 ../python/mms_server.py --port 5000`
@@ -88,8 +92,12 @@ matchmaker bugs found and fixed in this patch: double room on a repeated entry, 
 cabinet, ghost matches of cabinets that stopped polling, partner got ERR_MATCH_NOENTRY instead of
 MATCH_CANCELED, one cabinet waiting in two queues at once, wall-clock-based timers.
 
+Real game 2026-11-13: see [`../../analysis/real-game-test-2026-11-13.md`](../../analysis/real-game-test-2026-11-13.md)
+(STUN bind fix, badge clamp, FillAfterSeconds 15, CPU stand-in experiment, results-screen hang).
+
 ## Not done / risks
-* Never run against the real cabinet; hole-punch / P2P format still unknown.
+* Only tested with two cabinets on one PC; hole-punch / P2P between separate machines still untested.
+* Results screen hangs after 2-cabinet versus matches on one PC (also without this server; under investigation).
 * Mode→world ids, class ids 1–4, and the hour-based schedule are inferred from static analysis.
 * Matchmaker state is in memory (a restart drops waiting players); hidden MMR from the Python sketch is not ported
   (no reliable link between MMS am_id and card id yet) — ranked pairs by class + level only.

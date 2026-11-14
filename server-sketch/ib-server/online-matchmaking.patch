@@ -1,9 +1,9 @@
 From 46f2cf5f59c4858078e5c4d44e3d60923d7e15c1 Mon Sep 17 00:00:00 2001
 From: ServerOmega <69215510+ServerOmega@users.noreply.github.com>
 Date: Fri, 13 Nov 2026 07:32:41 -0800
-Subject: [PATCH] Online matchmaking (experimental): STUN+MMS in RegisterPcb,
- Entry/Check/Cancel matchmaker, IB class-match tables, ranked result
- persistence, Linux build option; load-test fixes
+Subject: [PATCH 1/7] Online matchmaking (experimental): STUN+MMS in
+ RegisterPcb, Entry/Check/Cancel matchmaker, IB class-match tables, ranked
+ result persistence, Linux build option; load-test fixes
 
 ---
  ONLINE_MATCHMAKING.md                         | 112 ++++
@@ -2321,6 +2321,788 @@ index 0000000..3b81d9a
 +    <PackageReference Include="protobuf-net" Version="3.2.45" />
 +  </ItemGroup>
 +</Project>
+-- 
+2.47.3
+
+
+From 59a8ceaba76b4a9c00743b17e00ecb7abdc89ed3 Mon Sep 17 00:00:00 2001
+From: ServerOmega <69215510+ServerOmega@users.noreply.github.com>
+Date: Fri, 13 Nov 2026 14:24:50 -0800
+Subject: [PATCH 2/7] RegisterCard: fall back to pending card by access code
+ when SessionId is empty (POC clients)
+
+---
+ .../Handlers/Game/RegisterCardCommandHandler.cs     | 13 +++++++++++++
+ 1 file changed, 13 insertions(+)
+
+diff --git a/Server-Infinite/Handlers/Game/RegisterCardCommandHandler.cs b/Server-Infinite/Handlers/Game/RegisterCardCommandHandler.cs
+index da8f5ea..3029cb0 100644
+--- a/Server-Infinite/Handlers/Game/RegisterCardCommandHandler.cs
++++ b/Server-Infinite/Handlers/Game/RegisterCardCommandHandler.cs
+@@ -32,6 +32,19 @@ public class RegisterCardCommandHandler : IRequestHandler<RegisterCardCommand, R
+         var cardProfile = _context.CardProfiles
+             .FirstOrDefault(x => x.AccessCode == registerCardRequest.AccessCode && x.SessionId == registerCardRequest.SessionId);
+ 
++        // Some clients (POC/SnowLauncher builds) send register_card with an empty SessionId.
++        // Fall back to the pending new card with the same access code (and chip id when sent).
++        if (cardProfile == null && string.IsNullOrEmpty(registerCardRequest.SessionId))
++        {
++            var chipId = registerCardRequest.ChipId;
++            cardProfile = _context.CardProfiles
++                .Where(x => x.IsNewCard && x.AccessCode == registerCardRequest.AccessCode)
++                .AsEnumerable()
++                .FirstOrDefault(x => string.IsNullOrEmpty(chipId) || x.ChipId == chipId);
++            if (cardProfile != null)
++                _logger.LogInformation("RegisterCard: empty SessionId, matched pending card {CardId} by access code", cardProfile.Id);
++        }
++
+         if (cardProfile == null)
+         {
+             return Task.FromResult(response);
+-- 
+2.47.3
+
+
+From c10e1826eccd88272306b1f2f71b16126626baba Mon Sep 17 00:00:00 2001
+From: ServerOmega <69215510+ServerOmega@users.noreply.github.com>
+Date: Fri, 13 Nov 2026 14:38:55 -0800
+Subject: [PATCH 3/7] Built-in RFC 5389/5780 STUN server (BuiltinStun),
+ single-IP or two-IP
+
+---
+ .../Matchmaking/BuiltinStunServer.cs          | 177 ++++++++++++++++++
+ .../Config/OnlineMatchingConfigurations.cs    |   9 +
+ Server-Infinite/Program.cs                    |   1 +
+ 3 files changed, 187 insertions(+)
+ create mode 100644 Server-Infinite/Matchmaking/BuiltinStunServer.cs
+
+diff --git a/Server-Infinite/Matchmaking/BuiltinStunServer.cs b/Server-Infinite/Matchmaking/BuiltinStunServer.cs
+new file mode 100644
+index 0000000..872d2b3
+--- /dev/null
++++ b/Server-Infinite/Matchmaking/BuiltinStunServer.cs
+@@ -0,0 +1,177 @@
++using System.Collections.Concurrent;
++using System.Net;
++using System.Net.Sockets;
++using Microsoft.Extensions.Options;
++using ServerInfinite.Models.Config;
++
++namespace ServerInfinite.Matchmaking;
++
++/// <summary>
++/// exvs2-lobbies: minimal RFC 5389 / RFC 5780 STUN server so the card server can be the only program a host runs.
++/// Answers Binding requests with XOR-MAPPED-ADDRESS, MAPPED-ADDRESS, RESPONSE-ORIGIN and OTHER-ADDRESS, and honours
++/// CHANGE-REQUEST: change-port answers from the alternate port; change-IP answers from the alternate IP when
++/// BuiltinStunAltIp is set, otherwise (single-IP host) from the alternate port so the cabinet's NAT test still completes.
++/// </summary>
++public sealed class BuiltinStunServer : BackgroundService
++{
++    const uint MagicCookie = 0x2112A442;
++    readonly OnlineMatchingConfigurations _mm;
++    readonly ILogger<BuiltinStunServer> _log;
++    readonly ConcurrentDictionary<string, DateTime> _seen = new();
++    // [ipIndex, portIndex] -> socket ; ipIndex 1 / portIndex 1 = alternate
++    readonly UdpClient?[,] _socks = new UdpClient?[2, 2];
++    IPAddress _ip0 = IPAddress.Any, _ip1 = IPAddress.Any;
++    IPAddress _advertised0 = IPAddress.Loopback, _advertised1 = IPAddress.Loopback;
++    int _port0, _port1;
++    bool _hasAltIp;
++
++    public BuiltinStunServer(IOptions<CardServerConfig> cfg, ILogger<BuiltinStunServer> log)
++    {
++        _mm = cfg.Value.OnlineMatching;
++        _log = log;
++    }
++
++    protected override async Task ExecuteAsync(CancellationToken ct)
++    {
++        if (!_mm.Enabled || !_mm.BuiltinStun) return;
++        _port0 = _mm.BuiltinStunPort == 0 ? (int)_mm.StunPort : (int)_mm.BuiltinStunPort;
++        _port1 = (int)(_mm.BuiltinStunAltPort == 0 ? (uint)_port0 + 1 : _mm.BuiltinStunAltPort);
++        IPAddress.TryParse(_mm.StunHost?.Trim(), out var stunIp);
++        _hasAltIp = IPAddress.TryParse(_mm.BuiltinStunAltIp?.Trim(), out var altIp);
++        if (_hasAltIp)
++        {
++            // two local addresses: bind each explicitly so replies leave from the right one
++            _ip0 = stunIp ?? IPAddress.Any; _ip1 = altIp!;
++        }
++        _advertised0 = stunIp ?? IPAddress.Loopback;
++        _advertised1 = _hasAltIp ? altIp! : _advertised0;
++
++        try
++        {
++            _socks[0, 0] = Bind(_ip0, _port0);
++            _socks[0, 1] = Bind(_ip0, _port1);
++            if (_hasAltIp)
++            {
++                _socks[1, 0] = Bind(_ip1, _port0);
++                _socks[1, 1] = Bind(_ip1, _port1);
++            }
++        }
++        catch (Exception e)
++        {
++            _log.LogError("STUN built-in server could not bind UDP {Port}/{Alt}: {Error}", _port0, _port1, e.Message);
++            return;
++        }
++        _log.LogInformation("STUN built-in server on UDP {Port} (+alt {Alt}){AltIp}; advertising OTHER-ADDRESS {Other}:{Alt}",
++            _port0, _port1, _hasAltIp ? $", alt IP {_ip1}" : " single-IP (change-IP answered from alt port)",
++            _advertised1, _port1);
++        if (stunIp == null)
++            _log.LogWarning("NET-WARN STUN: StunHost is not an IP literal; OTHER-ADDRESS will say 127.0.0.1 - set StunHost to this host's address");
++
++        var tasks = new List<Task>();
++        for (var i = 0; i < 2; i++)
++        for (var p = 0; p < 2; p++)
++            if (_socks[i, p] is { } s) tasks.Add(Loop(s, i, p, ct));
++        try { await Task.WhenAll(tasks); }
++        finally { foreach (var s in _socks) s?.Dispose(); }
++    }
++
++    static UdpClient Bind(IPAddress ip, int port)
++    {
++        var u = new UdpClient(AddressFamily.InterNetwork);
++        if (OperatingSystem.IsWindows())
++        {
++            const int SIO_UDP_CONNRESET = -1744830452; // ignore ICMP port-unreachable resets
++            u.Client.IOControl(SIO_UDP_CONNRESET, new byte[] { 0 }, null);
++        }
++        u.Client.Bind(new IPEndPoint(ip, port));
++        return u;
++    }
++
++    async Task Loop(UdpClient sock, int ipIdx, int portIdx, CancellationToken ct)
++    {
++        while (!ct.IsCancellationRequested)
++        {
++            UdpReceiveResult r;
++            try { r = await sock.ReceiveAsync(ct); }
++            catch (OperationCanceledException) { break; }
++            catch (SocketException) { continue; }
++            try { Handle(r.Buffer, r.RemoteEndPoint, ipIdx, portIdx); }
++            catch (Exception e) { _log.LogDebug("STUN bad packet from {Ep}: {Error}", r.RemoteEndPoint, e.Message); }
++        }
++    }
++
++    void Handle(byte[] d, IPEndPoint from, int ipIdx, int portIdx)
++    {
++        if (d.Length < 20 || (d[0] & 0xC0) != 0) return;
++        var type = (d[0] << 8) | d[1];
++        if (type != 0x0001) return; // Binding request only
++        var len = (d[2] << 8) | d[3];
++        var cookie = (uint)((d[4] << 24) | (d[5] << 16) | (d[6] << 8) | d[7]);
++        var rfc5389 = cookie == MagicCookie;
++        bool changeIp = false, changePort = false;
++        for (var i = 20; i + 4 <= Math.Min(d.Length, 20 + len);)
++        {
++            var at = (d[i] << 8) | d[i + 1];
++            var al = (d[i + 2] << 8) | d[i + 3];
++            if (at == 0x0003 && al >= 4)
++            {
++                changeIp = (d[i + 7] & 0x04) != 0;
++                changePort = (d[i + 7] & 0x02) != 0;
++            }
++            i += 4 + al + ((4 - al % 4) % 4);
++        }
++
++        var outIp = ipIdx; var outPort = portIdx;
++        if (changeIp)
++        {
++            if (_hasAltIp) outIp = 1 - ipIdx;
++            else outPort = 1 - portIdx; // single-IP host: best effort
++        }
++        if (changePort) outPort = 1 - portIdx;
++        if (changeIp && !_hasAltIp && changePort) outPort = 1 - portIdx; // both requested, one IP: still the other port
++        var sock = _socks[outIp, outPort] ?? _socks[0, outPort] ?? _socks[0, 0]!;
++        var originIp = outIp == 1 ? _advertised1 : _advertised0;
++        var originPort = outPort == 1 ? _port1 : _port0;
++        var otherIp = ipIdx == 1 ? _advertised0 : _advertised1;
++        var otherPort = portIdx == 1 ? _port0 : _port1;
++
++        var body = new List<byte>();
++        var fromIp = from.Address.IsIPv4MappedToIPv6 ? from.Address.MapToIPv4() : from.Address;
++        AddAddr(body, 0x0001, fromIp, from.Port, false, d);
++        if (rfc5389) AddAddr(body, 0x0020, fromIp, from.Port, true, d);
++        AddAddr(body, rfc5389 ? 0x802b : 0x0004, originIp, originPort, false, d); // RESPONSE-ORIGIN / SOURCE-ADDRESS
++        AddAddr(body, rfc5389 ? 0x802c : 0x0005, otherIp, otherPort, false, d);   // OTHER-ADDRESS / CHANGED-ADDRESS
++        var msg = new byte[20 + body.Count];
++        msg[0] = 0x01; msg[1] = 0x01; // Binding success
++        msg[2] = (byte)(body.Count >> 8); msg[3] = (byte)body.Count;
++        Array.Copy(d, 4, msg, 4, 16); // cookie + transaction id
++        body.CopyTo(msg, 20);
++        sock.Send(msg, msg.Length, from);
++
++        var key = $"{fromIp}:{from.Port}";
++        var now = DateTime.UtcNow;
++        if (_mm.VerboseLog || !_seen.TryGetValue(key, out var last) || (now - last).TotalSeconds > 60)
++        {
++            _seen[key] = now;
++            _log.LogInformation("NET stun from={From} via={Via} change={Change} -> reply from {OIp}:{OPort}",
++                key, $"{(ipIdx == 1 ? _advertised1 : _advertised0)}:{(portIdx == 1 ? _port1 : _port0)}",
++                (changeIp ? "ip" : "") + (changePort ? "port" : "") is var c && c.Length > 0 ? c : "none",
++                originIp, originPort);
++        }
++    }
++
++    static void AddAddr(List<byte> b, int type, IPAddress ip, int port, bool xor, byte[] req)
++    {
++        var a = ip.GetAddressBytes();
++        if (a.Length != 4) return;
++        var p = port;
++        if (xor)
++        {
++            p ^= 0x2112;
++            for (var i = 0; i < 4; i++) a[i] ^= req[4 + i];
++        }
++        b.Add((byte)(type >> 8)); b.Add((byte)type); b.Add(0); b.Add(8);
++        b.Add(0); b.Add(0x01); b.Add((byte)(p >> 8)); b.Add((byte)p);
++        b.AddRange(a);
++    }
++}
+diff --git a/Server-Infinite/Models/Config/OnlineMatchingConfigurations.cs b/Server-Infinite/Models/Config/OnlineMatchingConfigurations.cs
+index ba35833..18b9369 100644
+--- a/Server-Infinite/Models/Config/OnlineMatchingConfigurations.cs
++++ b/Server-Infinite/Models/Config/OnlineMatchingConfigurations.cs
+@@ -21,6 +21,15 @@ public class OnlineMatchingConfigurations
+     /// <summary>STUN host (an IP literal is safest). Empty = the host part of the request's Host header.</summary>
+     public string StunHost { get; set; } = "";
+     public uint StunPort { get; set; } = 3478;
++    /// <summary>Run a STUN server inside this process (UDP BuiltinStunPort + BuiltinStunAltPort) instead of coturn.
++    /// Set StunHost to this host's address as cabinets reach it (an IP literal).</summary>
++    public bool BuiltinStun { get; set; } = false;
++    /// <summary>0 = same as StunPort.</summary>
++    public uint BuiltinStunPort { get; set; } = 0;
++    /// <summary>Alternate port for RFC 5780 tests (0 = port + 1).</summary>
++    public uint BuiltinStunAltPort { get; set; } = 0;
++    /// <summary>Optional second local IP for full RFC 5780 change-IP tests ("" = single-IP mode).</summary>
++    public string BuiltinStunAltIp { get; set; } = "";
+     /// <summary>Only used if the STUN server answers 401/438 (long-term credentials).</summary>
+     public string StunUser { get; set; } = "";
+     [System.Text.Json.Serialization.JsonIgnore] // keep it out of the startup config log
+diff --git a/Server-Infinite/Program.cs b/Server-Infinite/Program.cs
+index bda49e2..a9c56ab 100644
+--- a/Server-Infinite/Program.cs
++++ b/Server-Infinite/Program.cs
+@@ -96,6 +96,7 @@ try
+             FirstNodeThisRun = (alloc as ServerInfinite.Matchmaking.FileNodeIdAllocator)?.FirstThisRun ?? 0
+         };
+     });
++    builder.Services.AddHostedService<ServerInfinite.Matchmaking.BuiltinStunServer>();
+     builder.Services.AddHttpContextAccessor();
+     
+     var app = builder.Build();
+-- 
+2.47.3
+
+
+From 9295ed8babeb0d6e6651d2c6790f26f1b85b6061 Mon Sep 17 00:00:00 2001
+From: ServerOmega <69215510+ServerOmega@users.noreply.github.com>
+Date: Fri, 13 Nov 2026 18:53:25 -0800
+Subject: [PATCH 4/7] Built-in STUN: bind to StunHost when it is a local
+ address
+
+On a multi-homed Windows PC (Ethernet + N2N/VPN adapter) a socket bound to
+0.0.0.0 answered from the other interface's IP (10.10.0.2), and the game drops
+STUN replies whose source is not the server it asked. Bind the primary socket
+to StunHost when that IP belongs to this machine; otherwise keep 0.0.0.0.
+Found in the real game, 2026-11-13.
+---
+ .../Matchmaking/BuiltinStunServer.cs          | 22 ++++++++++++++-----
+ 1 file changed, 17 insertions(+), 5 deletions(-)
+
+diff --git a/Server-Infinite/Matchmaking/BuiltinStunServer.cs b/Server-Infinite/Matchmaking/BuiltinStunServer.cs
+index 872d2b3..4ef4c22 100644
+--- a/Server-Infinite/Matchmaking/BuiltinStunServer.cs
++++ b/Server-Infinite/Matchmaking/BuiltinStunServer.cs
+@@ -38,11 +38,11 @@ public sealed class BuiltinStunServer : BackgroundService
+         _port1 = (int)(_mm.BuiltinStunAltPort == 0 ? (uint)_port0 + 1 : _mm.BuiltinStunAltPort);
+         IPAddress.TryParse(_mm.StunHost?.Trim(), out var stunIp);
+         _hasAltIp = IPAddress.TryParse(_mm.BuiltinStunAltIp?.Trim(), out var altIp);
+-        if (_hasAltIp)
+-        {
+-            // two local addresses: bind each explicitly so replies leave from the right one
+-            _ip0 = stunIp ?? IPAddress.Any; _ip1 = altIp!;
+-        }
++        // Bind to StunHost when it is one of this machine's addresses, so replies always leave from it.
++        // On a multi-homed Windows box a 0.0.0.0 socket can answer from another interface's IP, and the
++        // game drops replies whose source is not the STUN server it asked.
++        _ip0 = stunIp != null && IsLocal(stunIp) ? stunIp : IPAddress.Any;
++        if (_hasAltIp) _ip1 = altIp!;
+         _advertised0 = stunIp ?? IPAddress.Loopback;
+         _advertised1 = _hasAltIp ? altIp! : _advertised0;
+ 
+@@ -75,6 +75,18 @@ public sealed class BuiltinStunServer : BackgroundService
+         finally { foreach (var s in _socks) s?.Dispose(); }
+     }
+ 
++    static bool IsLocal(IPAddress ip)
++    {
++        try
++        {
++            foreach (var ni in System.Net.NetworkInformation.NetworkInterface.GetAllNetworkInterfaces())
++            foreach (var ua in ni.GetIPProperties().UnicastAddresses)
++                if (ua.Address.Equals(ip)) return true;
++        }
++        catch { }
++        return false;
++    }
++
+     static UdpClient Bind(IPAddress ip, int port)
+     {
+         var u = new UdpClient(AddressFamily.InterNetwork);
+-- 
+2.47.3
+
+
+From 060e241c15c6a6ede6d3c0a9e267f1122e06afdd Mon Sep 17 00:00:00 2001
+From: ServerOmega <69215510+ServerOmega@users.noreply.github.com>
+Date: Fri, 13 Nov 2026 18:53:25 -0800
+Subject: [PATCH 5/7] SaveBadge: clamp badge exp at 0
+
+A lost online match reported a negative badge point and the badge exp went
+0 -> -20 in the real game (2026-11-13). Clamp the stored value to >= 0.
+---
+ Server-Infinite/Commands/SaveBattle/Common/SaveBadgeCommand.cs | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/Server-Infinite/Commands/SaveBattle/Common/SaveBadgeCommand.cs b/Server-Infinite/Commands/SaveBattle/Common/SaveBadgeCommand.cs
+index 90e35a8..5fad533 100644
+--- a/Server-Infinite/Commands/SaveBattle/Common/SaveBadgeCommand.cs
++++ b/Server-Infinite/Commands/SaveBattle/Common/SaveBadgeCommand.cs
+@@ -49,7 +49,7 @@ public class SaveBadgeCommand
+             return;
+         }
+         int before = playerLevel.BadgeExp;
+-        playerLevel.BadgeExp = checked(playerLevel.BadgeExp + obtainedBadgePoint);
++        playerLevel.BadgeExp = Math.Max(0, checked(playerLevel.BadgeExp + obtainedBadgePoint));   // exvs2-lobbies: clamp, losses gave -20
+         _logger?.LogInformation("Badge exp CardId={CardId} badge={BadgeId} exp {Before} -> {After} ({Delta:+#;-#;0})",
+             cardProfile.Id, playerLevel.BadgeId, before, playerLevel.BadgeExp, obtainedBadgePoint);
+     }
+-- 
+2.47.3
+
+
+From a6cdb59e736f93bbb922a85b637ee0b9888254fc Mon Sep 17 00:00:00 2001
+From: ServerOmega <69215510+ServerOmega@users.noreply.github.com>
+Date: Fri, 13 Nov 2026 18:53:25 -0800
+Subject: [PATCH 6/7] Matchmaker: optional CPU stand-in seats; FillAfterSeconds
+ default 15
+
+CpuStandInSeats (default false, experimental): in a short-handed room each
+human's empty side seat is listed as a CPU client (PCB00000NPC, property N,
+node id = that cabinet's unused 2nd IssueNodeId id, same group), the same
+shape the game builds for its own CPU partner. Tested 2026-11-13 against the
+results-screen hang after 2-cabinet versus matches: the stand-ins reached both
+cabinets but did not fix it (the hang also happens in local LM mode with no
+matchmaker), so it stays opt-in.
+
+FillAfterSeconds default 30 -> 15 (30 s felt slow; 3 s works on a LAN).
+Tests: 41 pass.
+---
+ Server-Infinite/Configurations/server.json    |  3 +-
+ .../Match/MatchIssueNodeIdCommandHandler.cs   |  6 +-
+ Server-Infinite/Matchmaking/Matchmaker.cs     | 70 ++++++++++++-
+ .../Config/OnlineMatchingConfigurations.cs    |  6 +-
+ Server-Infinite/Program.cs                    |  1 +
+ Tests/Matchmaking.Tests/MatchmakerTests.cs    | 97 ++++++++++++++++++-
+ .../Matchmaking.Tests.csproj                  |  2 +-
+ 7 files changed, 174 insertions(+), 11 deletions(-)
+
+diff --git a/Server-Infinite/Configurations/server.json b/Server-Infinite/Configurations/server.json
+index 0ef1d39..0c08f17 100644
+--- a/Server-Infinite/Configurations/server.json
++++ b/Server-Infinite/Configurations/server.json
+@@ -31,7 +31,8 @@
+       "StunUser": "",
+       "StunPass": "",
+       "PollingIntervalSeconds": 3,
+-      "FillAfterSeconds": 30,
++      "FillAfterSeconds": 15,
++      "CpuStandInSeats": false,
+       "AllowPartialRooms": true,
+       "SoftAttributeWaitSeconds": 15,
+       "StaleAfterSeconds": 20,
+diff --git a/Server-Infinite/Handlers/Match/MatchIssueNodeIdCommandHandler.cs b/Server-Infinite/Handlers/Match/MatchIssueNodeIdCommandHandler.cs
+index a9dc23e..c51af2e 100644
+--- a/Server-Infinite/Handlers/Match/MatchIssueNodeIdCommandHandler.cs
++++ b/Server-Infinite/Handlers/Match/MatchIssueNodeIdCommandHandler.cs
+@@ -14,17 +14,21 @@ public class MatchIssueNodeIdCommandHandler : IRequestHandler<MatchIssueNodeIdCo
+ {
+     private readonly INodeIdAllocator _ids;
+     private readonly ILogger<MatchIssueNodeIdCommandHandler> _logger;
++    private readonly Matchmaker? _mm;
+ 
+-    public MatchIssueNodeIdCommandHandler(INodeIdAllocator ids, ILogger<MatchIssueNodeIdCommandHandler> logger)
++    public MatchIssueNodeIdCommandHandler(INodeIdAllocator ids, ILogger<MatchIssueNodeIdCommandHandler> logger,
++        Matchmaker? mm = null)
+     {
+         _ids = ids;
+         _logger = logger;
++        _mm = mm;
+     }
+ 
+     public Task<Response> Handle(MatchIssueNodeIdCommand request, CancellationToken cancellationToken)
+     {
+         var count = (int)Math.Clamp(request.Request.issue_node_id?.IssueCount ?? 1u, 1u, 16u);
+         var ids = _ids.Take(count);
++        _mm?.RegisterIssued(ids);   // ids[1] = this cabinet's CPU seat node id
+         _logger.LogInformation("MMS IssueNodeId x{Count} -> [{Ids}]", count, string.Join(",", ids));
+ 
+         return Task.FromResult(new Response
+diff --git a/Server-Infinite/Matchmaking/Matchmaker.cs b/Server-Infinite/Matchmaking/Matchmaker.cs
+index e26795d..b8aa0ed 100644
+--- a/Server-Infinite/Matchmaking/Matchmaker.cs
++++ b/Server-Infinite/Matchmaking/Matchmaker.cs
+@@ -130,12 +130,23 @@ public sealed class Matchmaker
+     private readonly Dictionary<uint, double> _ended = new();   // node -> when its unit was dropped by the server
+     private readonly Random _rng;
+     private uint _nextRoom = 1;
++    // first node id of an IssueNodeId batch -> the other ids of that batch (the game uses ids[1] for its CPU)
++    private readonly Dictionary<uint, uint[]> _siblings = new();
++    private readonly Queue<uint> _siblingOrder = new();
++    private const int SiblingsMax = 8192;
+ 
+     public double FillAfter { get; set; }
+     public bool AllowPartial { get; set; }
+     public double SoftWait { get; set; }
+     /// <summary>s without CheckMatching (from any of the unit's cabinets) before a waiting unit is dropped.</summary>
+     public double StaleAfter { get; set; } = 20;
++    /// <summary>
++    /// results-hang test 2026-11-13: fill each short side of a short-handed room with a CPU stand-in client
++    /// (pcb_serial PCB00000NPC, property "N", node_id = the human's unused 2nd IssueNodeId id, same group_id),
++    /// i.e. the same entry the game itself builds for a CPU partner (0x140753962), so every seat has an owner.
++    /// Off by default: in the real game it did not fix the results-screen hang (which also happens without any matchmaker).
++    /// </summary>
++    public bool CpuStandIns { get; set; } = false;
+     public Action<string>? Log { get; set; }
+     /// <summary>Warnings (address mismatch, missing STUN result). Falls back to <see cref="Log"/>.</summary>
+     public Action<string>? Warn { get; set; }
+@@ -225,6 +236,18 @@ public sealed class Matchmaker
+         return ErrorCode.Success;
+     }
+ 
++    /// <summary>Remember an IssueNodeId batch so a CPU stand-in can use the cabinet's own 2nd id.</summary>
++    public void RegisterIssued(IReadOnlyList<uint> ids)
++    {
++        if (ids.Count < 2) return;
++        lock (_gate)
++        {
++            _siblings[ids[0]] = ids.Skip(1).ToArray();
++            _siblingOrder.Enqueue(ids[0]);
++            while (_siblingOrder.Count > SiblingsMax) _siblings.Remove(_siblingOrder.Dequeue());
++        }
++    }
++
+     public (ErrorCode Code, Room? Room, uint ApplyId) Check(uint nodeId, double now)
+     {
+         var r = CheckCore(nodeId, now);
+@@ -417,9 +440,27 @@ public sealed class Matchmaker
+     private void MakeRoom((List<Unit> S0, List<Unit> S1) sides, double now)
+     {
+         var clients = new List<RoomClient>();
+-        foreach (var u in sides.S0) clients.AddRange(u.Clients.Select(c => new RoomClient(0, c)));
+-        foreach (var u in sides.S1) clients.AddRange(u.Clients.Select(c => new RoomClient(1, c)));
+         var all = sides.S0.Concat(sides.S1).ToList();
++        var npcs = new List<string>();
++        void AddSide(List<Unit> side, uint group)
++        {
++            foreach (var u in side) clients.AddRange(u.Clients.Select(c => new RoomClient(group, c)));
++            if (!CpuStandIns) return;
++            var free = TeamSlots - side.Sum(u => u.Slots);
++            foreach (var u in side.Where(u => !u.IsTeam))
++            {
++                if (free <= 0) break;
++                var owner = u.Clients[0];
++                var node = StandInNode(owner.NodeId, all);
++                if (node == 0) { npcs.Add($"g{group} none-for-{owner.NodeId}"); continue; }
++                clients.Insert(clients.FindIndex(x => ReferenceEquals(x.Client, owner)) + 1,
++                    new RoomClient(group, StandIn(owner, node)));
++                npcs.Add($"g{group} {node}(of {owner.NodeId})");
++                free--;
++            }
++        }
++        AddSide(sides.S0, 0);
++        AddSide(sides.S1, 1);
+         var room = new Room
+         {
+             RoomId = _nextRoom++, Clients = clients, At = now, World = all[0].World,
+@@ -432,11 +473,36 @@ public sealed class Matchmaker
+         }
+         string Desc(List<Unit> s) => string.Join("+", s.Select(u => $"{(u.IsTeam ? "T" : "S")}[{string.Join(",", u.NodeIds)}]"));
+         Log?.Invoke($"MATCH room={room.RoomId} {all[0].WorldName} {Desc(sides.S0)} vs {Desc(sides.S1)} (humans={room.Humans}/4)");
++        if (npcs.Count > 0) Log?.Invoke($"MATCH room={room.RoomId} cpu-stand-ins: {string.Join(", ", npcs)}");
+         var src = new Dictionary<uint, string>();
+         foreach (var u in all) foreach (var kv in u.SourceByNode) src[kv.Key] = kv.Value;
+         Log?.Invoke(NetDiag.MatchLine(room.RoomId, clients.Select(c => (c.GroupId, c.Client)), src, Realms));
+     }
+ 
++    /// <summary>The cabinet's own unused 2nd IssueNodeId id; unknown batch (server restarted) -> id + 1 unless that id
++    /// is a human node of a waiting/matched unit. 0 = none usable.</summary>
++    private uint StandInNode(uint humanNode, List<Unit> roomUnits)
++    {
++        bool Taken(uint n) => n == 0 || (_byNode.TryGetValue(n, out var u) && u.NodeIds.Contains(n)) ||
++                              roomUnits.Any(r => r.Clients.Any(c => c.NodeId == n));
++        if (_siblings.TryGetValue(humanNode, out var sib))
++            foreach (var n in sib) if (!Taken(n)) return n;
++        return humanNode == uint.MaxValue || Taken(humanNode + 1) ? 0 : humanNode + 1;
++    }
++
++    /// <summary>Same shape as the game's own CPU partner entry (0x140753962): no address, am_id 0, own loc/pref.</summary>
++    private static Client StandIn(Client owner, uint node)
++    {
++        var c = new Client
++        {
++            NodeId = node, PcbSerial = NpcSerial, LocId = owner.LocId ?? "", PrefCode = owner.PrefCode,
++            GlobalIpaddress = "0.0.0.0", GlobalPort = 0, LocalIpaddress = "0.0.0.0", LocalPort = 0,
++            NatMappingType = NatMappingType.NmNone, NatFilteringType = NatFilteringType.NfNone,
++        };
++        c.Properties.Add(new Client.Property { PropertyId = 0, PropertyValue = "N" });
++        return c;
++    }
++
+     /// <summary>Remove a unit. With <paramref name="now"/>, its other human nodes (e.g. the partner of a
+     /// fixed pair) get MATCH_CANCELED on their next poll instead of ERR_MATCH_NOENTRY.</summary>
+     private void Drop(Unit t, double? now = null, uint? except = null, string? reason = null)
+diff --git a/Server-Infinite/Models/Config/OnlineMatchingConfigurations.cs b/Server-Infinite/Models/Config/OnlineMatchingConfigurations.cs
+index 18b9369..6c89f8c 100644
+--- a/Server-Infinite/Models/Config/OnlineMatchingConfigurations.cs
++++ b/Server-Infinite/Models/Config/OnlineMatchingConfigurations.cs
+@@ -38,9 +38,13 @@ public class OnlineMatchingConfigurations
+     /// <summary>Seconds between CheckMatching polls (EntryMatching.poling_interval).</summary>
+     public uint PollingIntervalSeconds { get; set; } = 3;
+     /// <summary>Seconds the oldest waiter waits for a full 2v2 before a short-handed (1v1 / 2v1) room may form.</summary>
+-    public double FillAfterSeconds { get; set; } = 30;
++    public double FillAfterSeconds { get; set; } = 15;
+     /// <summary>Allow short-handed rooms at all (false = only full 4-slot rooms).</summary>
+     public bool AllowPartialRooms { get; set; } = true;
++    /// <summary>Short-handed rooms: list a CPU stand-in client ("N", PCB00000NPC, the cabinet's 2nd node id, same
++    /// group) for every empty seat, so each seat is owned by a cabinet. Experimental, off by default: tested
++    /// 2026-11-13, it did not fix the results-screen hang.</summary>
++    public bool CpuStandInSeats { get; set; } = false;
+     /// <summary>Seconds during which a "soft" mode attribute (win-rate bucket, veteran flag) must match.</summary>
+     public double SoftAttributeWaitSeconds { get; set; } = 15;
+     /// <summary>Seconds without a CheckMatching poll before a waiting cabinet is dropped (no ghost matches).</summary>
+diff --git a/Server-Infinite/Program.cs b/Server-Infinite/Program.cs
+index a9c56ab..e8c496f 100644
+--- a/Server-Infinite/Program.cs
++++ b/Server-Infinite/Program.cs
+@@ -89,6 +89,7 @@ try
+             Log = message => logger.LogInformation("{Message}", message),
+             Warn = message => logger.LogWarning("{Message}", message),
+             Verbose = mm.VerboseLog,
++            CpuStandIns = mm.CpuStandInSeats,
+             Realms = ServerInfinite.Matchmaking.NetDiag.ParseRealms(mm.NetworkRealms),
+             InStoreScope = mm.InStoreScope,
+             ShopKeys = ServerInfinite.Matchmaking.NetDiag.ParseShopKeys(mm.ShopKeys),
+diff --git a/Tests/Matchmaking.Tests/MatchmakerTests.cs b/Tests/Matchmaking.Tests/MatchmakerTests.cs
+index 9587550..6adc0f3 100644
+--- a/Tests/Matchmaking.Tests/MatchmakerTests.cs
++++ b/Tests/Matchmaking.Tests/MatchmakerTests.cs
+@@ -128,8 +128,95 @@ public class MatchmakerTests
+         mm.Entry(a, 0); mm.Entry(b, 0);
+         Assert.Null(mm.Check(a.Myclient.NodeId, 10).Room);
+         var room = mm.Check(a.Myclient.NodeId, 31).Room!;
+-        Assert.Equal(2, room.Clients.Count);
+-        Assert.NotEqual(room.Clients[0].GroupId, room.Clients[1].GroupId);  // 1v1
++        var humans = room.Clients.Where(c => Matchmaker.Unit.IsHuman(c.Client)).ToList();
++        Assert.Equal(2, humans.Count);
++        Assert.NotEqual(humans[0].GroupId, humans[1].GroupId);  // 1v1
++    }
++
++    // ---- CPU stand-ins for empty seats (results-screen hang test, 2026-11-13) ----
++
++    private static Request.EntryMatching Solo(uint node, uint world = 23)
++    {
++        var e = new Request.EntryMatching
++        {
++            ApplyId = 1, Myclient = Cl(node, true, $"L{node}"), MatchingTimeout = 150,
++            Myplayer = new Player { BanapassportAmId = node },
++            World = new World { MuchaGameId = "GIB1", Version = 1, WorldId = world }
++        };
++        e.Myplayer.Parameters.Add(new Player.Parameter { AttributeId = 1, parameter = 0 });
++        return e;
++    }
++
++    [Fact]
++    public void OneVsOneGetsACpuStandInPerSideOnTheCabinetsSecondNodeId()
++    {
++        var mm = New(); mm.CpuStandIns = true;
++        mm.RegisterIssued(new uint[] { 1100, 1101 });
++        mm.RegisterIssued(new uint[] { 1102, 1103 });
++        var a = Solo(1100); var b = Solo(1102);
++        mm.Entry(a, 0); mm.Entry(b, 0);
++        var room = mm.Check(1100, 31).Room!;
++        Assert.Equal(4, room.Clients.Count);
++        Assert.Equal(2, room.Clients.Count(c => c.GroupId == 0));
++        Assert.Equal(2, room.Clients.Count(c => c.GroupId == 1));
++        foreach (var (human, npc) in new[] { (1100u, 1101u), (1102u, 1103u) })
++        {
++            var h = room.Clients.Single(c => c.Client.NodeId == human);
++            var n = room.Clients.Single(c => c.Client.NodeId == npc);
++            Assert.Equal(h.GroupId, n.GroupId);
++            Assert.Equal(Matchmaker.NpcSerial, n.Client.PcbSerial);
++            Assert.Equal("N", n.Client.Properties[0].PropertyValue);
++            Assert.Equal(h.Client.LocId, n.Client.LocId);
++            Assert.False(Matchmaker.Unit.IsHuman(n.Client));
++            // listed right after its owner
++            var i = room.Clients.ToList().FindIndex(c => c.Client.NodeId == human);
++            Assert.Equal(npc, room.Clients[i + 1].Client.NodeId);
++        }
++        Assert.Equal(2, room.Humans);
++        Assert.Same(room, mm.Check(1102, 31).Room);   // both cabinets see the same 4-entry room
++    }
++
++    [Fact]
++    public void CpuStandInsAreOffByDefault()
++    {
++        var mm = New();
++        mm.RegisterIssued(new uint[] { 1100, 1101 });
++        mm.RegisterIssued(new uint[] { 1102, 1103 });
++        mm.Entry(Solo(1100), 0); mm.Entry(Solo(1102), 0);
++        Assert.Equal(2, mm.Check(1100, 31).Room!.Clients.Count);
++    }
++
++    [Fact]
++    public void TeamWithItsOwnCpuIsNotFilledAgainAndFullRoomsGetNoStandIns()
++    {
++        var mm = New(); mm.CpuStandIns = true;
++        var tn = Entry(23, "TN"); var s = Entry(23);
++        mm.Entry(tn, 0); mm.Entry(s, 0);
++        var room = mm.Check(s.Myclient.NodeId, 31).Room!;
++        Assert.Equal(4, room.Clients.Count);                       // TN = 2 + solo + 1 stand-in
++        Assert.Equal(2, room.Clients.Count(c => c.Client.PcbSerial == Matchmaker.NpcSerial));
++        var sg = room.Clients.Single(c => c.Client.NodeId == s.Myclient.NodeId).GroupId;
++        Assert.Equal(2, room.Clients.Count(c => c.GroupId == sg));
++
++        var full = New(); full.CpuStandIns = true;
++        var es = Enumerable.Range(0, 4).Select(_ => Entry(23)).ToList();
++        es.ForEach(e => full.Entry(e, 0));
++        var r4 = full.Check(es[0].Myclient.NodeId, 1).Room!;
++        Assert.Equal(4, r4.Clients.Count);
++        Assert.All(r4.Clients, c => Assert.True(Matchmaker.Unit.IsHuman(c.Client)));
++    }
++
++    [Fact]
++    public void StandInNeverReusesAHumanNodeId()
++    {
++        // unknown batch (e.g. server restarted after IssueNodeId): id + 1 is used only if no human holds it
++        var mm = New(); mm.CpuStandIns = true;
++        mm.Entry(Solo(2000), 0); mm.Entry(Solo(2001), 0);
++        var room = mm.Check(2000, 31).Room!;
++        var ids = room.Clients.Select(c => c.Client.NodeId).ToList();
++        Assert.Equal(ids.Count, ids.Distinct().Count());
++        Assert.Contains(2002u, ids);                               // 2001's fallback
++        Assert.DoesNotContain(room.Clients, c => c.Client.NodeId == 2001 && c.Client.PcbSerial == Matchmaker.NpcSerial);
+     }
+ 
+     [Fact]
+@@ -518,8 +605,8 @@ public class MatchmakerTests
+         Assert.Equal(4, mm.QueueLength);                                         // no cross-realm 2v2
+         var r0 = mm.Check(es[0].Myclient.NodeId, 31).Room!;                      // fill timer: 1v1 per realm
+         var r2 = mm.Check(es[2].Myclient.NodeId, 31).Room!;
+-        Assert.Equal(es[1].Myclient.NodeId, r0.Clients.Single(c => c.Client.NodeId != es[0].Myclient.NodeId).Client.NodeId);
+-        Assert.Equal(es[3].Myclient.NodeId, r2.Clients.Single(c => c.Client.NodeId != es[2].Myclient.NodeId).Client.NodeId);
++        Assert.Equal(es[1].Myclient.NodeId, r0.Clients.Single(c => Matchmaker.Unit.IsHuman(c.Client) && c.Client.NodeId != es[0].Myclient.NodeId).Client.NodeId);
++        Assert.Equal(es[3].Myclient.NodeId, r2.Clients.Single(c => Matchmaker.Unit.IsHuman(c.Client) && c.Client.NodeId != es[2].Myclient.NodeId).Client.NodeId);
+ 
+         var off = New(); off.Realms = null;                                      // realm matching off: one pool
+         foreach (var e in es) { e.Myclient.NodeId += 1000; off.Entry(e, 0); }
+@@ -558,7 +645,7 @@ public class MatchmakerTests
+         es.ForEach(e => mm.Entry(e, 0));
+         var got = es.Select(e => mm.Check(e.Myclient.NodeId, 31).Room).Where(r => r != null).Distinct().ToList();
+         Assert.Equal(rooms, got.Count);
+-        Assert.All(got, r => Assert.Equal(humansPerRoom, r!.Clients.Count));
++        Assert.All(got, r => Assert.Equal(humansPerRoom, r!.Clients.Count(c => Matchmaker.Unit.IsHuman(c.Client))));
+     }
+ 
+     [Fact]
+diff --git a/Tests/Matchmaking.Tests/Matchmaking.Tests.csproj b/Tests/Matchmaking.Tests/Matchmaking.Tests.csproj
+index 3b81d9a..b5b7cbb 100644
+--- a/Tests/Matchmaking.Tests/Matchmaking.Tests.csproj
++++ b/Tests/Matchmaking.Tests/Matchmaking.Tests.csproj
+@@ -7,7 +7,7 @@
+     <IsPackable>false</IsPackable>
+   </PropertyGroup>
+   <ItemGroup>
+-    <Compile Include="..\..\Server-Infinite\Matchmaking\*.cs" Link="Matchmaking\%(Filename)%(Extension)" />
++    <Compile Include="..\..\Server-Infinite\Matchmaking\*.cs" Exclude="..\..\Server-Infinite\Matchmaking\BuiltinStunServer.cs" Link="Matchmaking\%(Filename)%(Extension)" />
+     <Compile Include="..\..\Server-Infinite\Proto\Match.cs" Link="Proto\Match.cs" />
+   </ItemGroup>
+   <ItemGroup>
+-- 
+2.47.3
+
+
+From 679ae7d833acb2a84183f4844568c34134ac5adf Mon Sep 17 00:00:00 2001
+From: ServerOmega <69215510+ServerOmega@users.noreply.github.com>
+Date: Fri, 13 Nov 2026 18:53:49 -0800
+Subject: [PATCH 7/7] ONLINE_MATCHMAKING.md: first real-game results
+ (2026-11-13), BuiltinStun / CpuStandInSeats / FillAfterSeconds config
+
+---
+ ONLINE_MATCHMAKING.md | 36 ++++++++++++++++++++++++++++++++----
+ 1 file changed, 32 insertions(+), 4 deletions(-)
+
+diff --git a/ONLINE_MATCHMAKING.md b/ONLINE_MATCHMAKING.md
+index 2a72884..65ee897 100644
+--- a/ONLINE_MATCHMAKING.md
++++ b/ONLINE_MATCHMAKING.md
+@@ -1,7 +1,10 @@
+-# Online matchmaking patch (exvs2-lobbies) — EXPERIMENTAL, NOT WORKING IN-GAME YET
++# Online matchmaking patch (exvs2-lobbies) — EXPERIMENTAL
+ 
+-> ⚠️ This branch has **never been tested with the real game**. Everything is based on static analysis of the
+-> IB exe ([exvs2-lobbies](https://github.com/ServerOmega/exvs2-lobbies)) and on fake-cabinet tests.
++> ⚠️ Experimental. **First real-game test 2026-11-13:** two cabinets queued online (`battleMode: 0` + built-in
++> STUN), matched through this server and played full matches in Mix Match and Class Match solo; results were
++> saved. Both cabinets ran on **one PC**, so cabinet-to-cabinet play over separate machines / the internet is still
++> untested, and the results screen hangs after every 2-cabinet versus match (see "Real-game results" below; the
++> hang is not caused by this server). Project: [exvs2-matchmaking](https://github.com/ServerOmega/exvs2-matchmaking).
+ > You must already have a copy of the game. Upstream: Chiang-17/EXVS2-IB-Server (v1.2.0, commit 7f4b280).
+ 
+ ## What this changes
+@@ -34,8 +37,13 @@
+   "StunHost": "203.0.113.10",  // coturn; IP literal recommended ("" = same host as this server)
+   "StunPort": 3478,
+   "StunUser": "", "StunPass": "",
++  "BuiltinStun": false,        // true = run the STUN server in this process (UDP StunPort and StunPort+1)
++                               // instead of coturn; StunHost must be this host's IP as cabinets reach it
++  "BuiltinStunPort": 0, "BuiltinStunAltPort": 0, "BuiltinStunAltIp": "",   // 0 = StunPort / port+1; "" = single-IP
+   "PollingIntervalSeconds": 3,
+-  "FillAfterSeconds": 30, "AllowPartialRooms": true,
++  "FillAfterSeconds": 15,      // short-handed room (>= 2 humans) after this wait; 3 works on a LAN, 10-15 public
++  "AllowPartialRooms": true,
++  "CpuStandInSeats": false,    // experimental: list a CPU client for each empty seat (did not fix the results hang)
+   "StaleAfterSeconds": 20,     // drop a waiting cabinet that stopped polling (min 3 x poll interval)
+   "ClassMatchScheduleMode": "Both",  // Both | Hours | UnixTime
+   "VerboseLog": false,         // true = also one line per CheckMatching poll (debugging only)
+@@ -100,6 +108,26 @@ server serves cabinets from any number of stores / LMs and home setups at once,
+   in-store worlds 15/16 are also keyed by the shop site: `ShopKeys` name > STUN public IP > LAN/overlay realm >
+   request source. Different stores never meet in in-store mode; they still meet in the online modes.
+ 
++## Real-game results (2026-11-13, times PT)
++Setup: two IB cabinets (POC) on one Windows 11 PC, each with its own IP and its own card server; cab1's card
++server (a second instance on another port) had `MatchUrl` pointing at the main server's `/match` (split setup), cab2 used the main server
++directly. Built-in STUN on the main server.
++* **Works:** RegisterPcb → SRV_MATCH + SRV_STUN; IssueNodeId; STUN NAT test; EntryMatching / CheckMatching;
++  per-mode queues (Mix Match world 23 and Class Match solo world 13 stay separate); in-game cancel
++  (CancelMatching); short-handed 1v1 room after `FillAfterSeconds`; the battle starts and finishes; each cabinet's
++  own card server got `SaveVsmOnResult` (HTTP 200) and stored class-match rate and badge.
++* **Split card server works:** a cabinet's card server can be a different server than the matchmaker (`MatchUrl`).
++* **Fixed – STUN source address:** on a multi-homed PC the built-in STUN socket bound to 0.0.0.0 replied from the
++  N2N adapter's IP; the game dropped those replies. Now bound to `StunHost` when it is a local IP.
++* **Fixed – badge exp:** a lost match took badge exp 0 → −20; now clamped at 0.
++* **FillAfterSeconds:** 30 felt slow; 3 works on a LAN; default now 15 (10–15 recommended for a public server).
++* **Open – results-screen hang** after every 2-cabinet **versus** match: both cabinets sit on the results screen
++  for minutes, then recover. Packet captures: every message answered, cabinets stay in sync, both card servers
++  answered 200. Holding Start does not clear it. CPU stand-in seats (`CpuStandInSeats`) reached both cabinets but
++  did not help. The same hang happens in **local LM mode with no matchmaker at all** (with two LMs and with one
++  shared LM); a solo route battle vs CPU does not hang. So it is **not caused by this server**; most likely two
++  game instances on one OS interfering. Pending: cab2 in Windows Sandbox (own network stack) and a real two-PC test.
++
+ ## Known gaps / risks
+ * CheckMatching / CancelMatching are not authenticated: anyone who knows a node id can cancel that entry.
+ * Malformed protobuf bodies on `/match` get HTTP 500 from the model binder (the real cabinet never sends them).
 -- 
 2.47.3
 
