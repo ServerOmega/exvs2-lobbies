@@ -74,6 +74,16 @@ the online-tag patch. Keep the server log lines named in each item.
 - [ ] Instant team (即席チーム) after a solo win: confirm no new server request is needed
 - [ ] Later: tag partners on **different** card servers (needs globally unique pilot ids, partner-invites.md §6 Step C)
 
+## Results-hang fixes ([analysis/results-hang-fixes.md](analysis/results-hang-fixes.md) section 4)
+Box, fake cabinets + fake cards (2026-11-14): 7 unit tests (`HangFixTests`) + `server-sketch/loadtest/hangfix_e2e.py`
+15/15 with the flags on, 10/10 with them off. Not tested with the game yet.
+- [ ] `tools\check-debugparam.ps1` on both cabinets (read-only): no `!!!` lines (#55 / #44)
+- [ ] Server log after a match: any `Unhandled case`? Then `PostMatchStubs: true` and repeat; `NETREPORT` lines appear
+- [ ] `OnlineMatching.HumansTeamVsCpu: true`: two solo cabinets become teammates vs 2 CPUs after `FillAfterSeconds`;
+      battle starts? results screen ends?
+- [ ] Same layout in LM mode, chosen by hand (teammates)
+- [ ] During a hang: card key on one cabinet, then the other (card-reader symptom)
+
 ## Lobbies / Custom Match
 - [ ] Press Custom Match with the LM running and log what the game requests
 - [ ] Implement LoadRoom / RegisterRoom handlers and check whether rooms appear

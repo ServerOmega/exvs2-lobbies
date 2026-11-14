@@ -15,7 +15,7 @@ server, v1.2.0, commit `7f4b280`) so that it:
 * can be built and run **on Linux** (`-p:LinuxHost=true`) as well as Windows.
 
 Upstream has **no license**, so it is not forked or redistributed here — only our changes, as a patch
-(`online-matchmaking.patch`, a `git format-patch 7f4b280..online-matchmaking` of the local branch; 7 commits).
+(`online-matchmaking.patch`, a `git format-patch 7f4b280..online-matchmaking` of the local branch; 12 commits).
 Full change list and config reference: `ONLINE_MATCHMAKING.md` inside the patch.
 
 Step-by-step hosting / player guide: [`docs/SETUP.md`](../../docs/SETUP.md).
@@ -25,7 +25,7 @@ Needs the .NET 9 SDK (`yay -S dotnet-sdk` on Arch; on Windows install .NET 9 SDK
 ```bash
 git clone https://github.com/Chiang-17/EXVS2-IB-Server && cd EXVS2-IB-Server
 git checkout 7f4b280
-git am /path/to/exvs2-matchmaking/server-sketch/ib-server/online-matchmaking.patch    # creates 11 commits
+git am /path/to/exvs2-matchmaking/server-sketch/ib-server/online-matchmaking.patch    # creates 12 commits
 
 # Windows server (like upstream's release):
 dotnet publish Server-Infinite -c Release -r win-x64

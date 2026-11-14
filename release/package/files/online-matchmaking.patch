@@ -1,7 +1,7 @@
 From 46f2cf5f59c4858078e5c4d44e3d60923d7e15c1 Mon Sep 17 00:00:00 2001
 From: ServerOmega <69215510+ServerOmega@users.noreply.github.com>
 Date: Fri, 13 Nov 2026 07:32:41 -0800
-Subject: [PATCH 01/11] Online matchmaking (experimental): STUN+MMS in
+Subject: [PATCH 01/12] Online matchmaking (experimental): STUN+MMS in
  RegisterPcb, Entry/Check/Cancel matchmaker, IB class-match tables, ranked
  result persistence, Linux build option; load-test fixes
 
@@ -2328,7 +2328,7 @@ index 0000000..3b81d9a
 From 59a8ceaba76b4a9c00743b17e00ecb7abdc89ed3 Mon Sep 17 00:00:00 2001
 From: ServerOmega <69215510+ServerOmega@users.noreply.github.com>
 Date: Fri, 13 Nov 2026 14:24:50 -0800
-Subject: [PATCH 02/11] RegisterCard: fall back to pending card by access code
+Subject: [PATCH 02/12] RegisterCard: fall back to pending card by access code
  when SessionId is empty (POC clients)
 
 ---
@@ -2366,7 +2366,7 @@ index da8f5ea..3029cb0 100644
 From c10e1826eccd88272306b1f2f71b16126626baba Mon Sep 17 00:00:00 2001
 From: ServerOmega <69215510+ServerOmega@users.noreply.github.com>
 Date: Fri, 13 Nov 2026 14:38:55 -0800
-Subject: [PATCH 03/11] Built-in RFC 5389/5780 STUN server (BuiltinStun),
+Subject: [PATCH 03/12] Built-in RFC 5389/5780 STUN server (BuiltinStun),
  single-IP or two-IP
 
 ---
@@ -2598,7 +2598,7 @@ index bda49e2..a9c56ab 100644
 From 9295ed8babeb0d6e6651d2c6790f26f1b85b6061 Mon Sep 17 00:00:00 2001
 From: ServerOmega <69215510+ServerOmega@users.noreply.github.com>
 Date: Fri, 13 Nov 2026 18:53:25 -0800
-Subject: [PATCH 04/11] Built-in STUN: bind to StunHost when it is a local
+Subject: [PATCH 04/12] Built-in STUN: bind to StunHost when it is a local
  address
 
 On a multi-homed Windows PC (Ethernet + N2N/VPN adapter) a socket bound to
@@ -2657,7 +2657,7 @@ index 872d2b3..4ef4c22 100644
 From 060e241c15c6a6ede6d3c0a9e267f1122e06afdd Mon Sep 17 00:00:00 2001
 From: ServerOmega <69215510+ServerOmega@users.noreply.github.com>
 Date: Fri, 13 Nov 2026 18:53:25 -0800
-Subject: [PATCH 05/11] SaveBadge: clamp badge exp at 0
+Subject: [PATCH 05/12] SaveBadge: clamp badge exp at 0
 
 A lost online match reported a negative badge point and the badge exp went
 0 -> -20 in the real game (2026-11-13). Clamp the stored value to >= 0.
@@ -2685,7 +2685,7 @@ index 90e35a8..5fad533 100644
 From a6cdb59e736f93bbb922a85b637ee0b9888254fc Mon Sep 17 00:00:00 2001
 From: ServerOmega <69215510+ServerOmega@users.noreply.github.com>
 Date: Fri, 13 Nov 2026 18:53:25 -0800
-Subject: [PATCH 06/11] Matchmaker: optional CPU stand-in seats;
+Subject: [PATCH 06/12] Matchmaker: optional CPU stand-in seats;
  FillAfterSeconds default 15
 
 CpuStandInSeats (default false, experimental): in a short-handed room each
@@ -3036,7 +3036,7 @@ index 3b81d9a..b5b7cbb 100644
 From 679ae7d833acb2a84183f4844568c34134ac5adf Mon Sep 17 00:00:00 2001
 From: ServerOmega <69215510+ServerOmega@users.noreply.github.com>
 Date: Fri, 13 Nov 2026 18:53:49 -0800
-Subject: [PATCH 07/11] ONLINE_MATCHMAKING.md: first real-game results
+Subject: [PATCH 07/12] ONLINE_MATCHMAKING.md: first real-game results
  (2026-11-13), BuiltinStun / CpuStandInSeats / FillAfterSeconds config
 
 ---
@@ -3110,7 +3110,7 @@ index 2a72884..65ee897 100644
 From 4ecdd01d345a51c3a5560a882691a6e492be2c03 Mon Sep 17 00:00:00 2001
 From: ServerOmega <69215510+ServerOmega@users.noreply.github.com>
 Date: Fri, 13 Nov 2026 19:08:01 -0800
-Subject: [PATCH 08/11] Matchmaker: pair worlds for online tag (5, pair key)
+Subject: [PATCH 08/12] Matchmaker: pair worlds for online tag (5, pair key)
  and partner recruit (21 casual, 22 by class)
 
 Exactly two solo cabinets per room, both group 0, fixed order (world 5: lower am_id = game's leader first;
@@ -3601,7 +3601,7 @@ index 0000000..f7c4beb
 From e460603df7dd164e85b3ed5cd456994a819a2601 Mon Sep 17 00:00:00 2001
 From: ServerOmega <69215510+ServerOmega@users.noreply.github.com>
 Date: Fri, 13 Nov 2026 19:11:51 -0800
-Subject: [PATCH 09/11] Online tag: send tag teams in LoadCard (36); WebUI
+Subject: [PATCH 09/12] Online tag: send tag teams in LoadCard (36); WebUI
  invite checks the partner's code server-side
 
 * LoadCard.MobileUserGroup.tag_teams: every team the card leads or partners, partner_id = partner's pilot id
@@ -4043,7 +4043,7 @@ index 27c6cb7..94b83aa 100644
 From dcf1e9cf9fddc8862ad034846ebf1a1fb167a3d5 Mon Sep 17 00:00:00 2001
 From: ServerOmega <69215510+ServerOmega@users.noreply.github.com>
 Date: Fri, 13 Nov 2026 19:16:15 -0800
-Subject: [PATCH 10/11] WebUI: re-enable the Teams tab (online-tag invite) and
+Subject: [PATCH 10/12] WebUI: re-enable the Teams tab (online-tag invite) and
  fix its crash on a new team
 
 Upstream hid the Teams tab; creating a team there (partner's user id + invitation code) is how a player
@@ -4139,7 +4139,7 @@ index 3709ff7..f37e4f8 100644
 From 0e7ec86f35d24461efb049eb1ae6b3eae7015728 Mon Sep 17 00:00:00 2001
 From: ServerOmega <69215510+ServerOmega@users.noreply.github.com>
 Date: Fri, 13 Nov 2026 19:17:13 -0800
-Subject: [PATCH 11/11] ONLINE_MATCHMAKING.md: online tag / partner recruit
+Subject: [PATCH 11/12] ONLINE_MATCHMAKING.md: online tag / partner recruit
  (pair worlds, LoadCard tag_teams, WebUI invite, OnlineTag config)
 
 ---
@@ -4212,6 +4212,536 @@ index 65ee897..81e88cd 100644
 +* Online tag / recruit: the CheckMatching shape the game expects for worlds 5/21/22 (2 clients, both group 0) is a
 +  guess; `tag_status` meaning unknown; recruit leader rule unknown; tags only within one card server (ids collide
 +  across servers). Untested in the real game.
+-- 
+2.47.3
+
+
+From bb1f1c02bf7ac969890bdb686027ca10f450e7c8 Mon Sep 17 00:00:00 2001
+From: ServerOmega <69215510+ServerOmega@users.noreply.github.com>
+Date: Sat, 14 Nov 2026 02:52:18 -0800
+Subject: [PATCH 12/12] Results-hang fixes (experimental): HumansTeamVsCpu
+ rooms, PostMatchStubs for 205/211/225/306/406/407, NETREPORT log of
+ SaveVsmOnResult.network_report
+
+---
+ ONLINE_MATCHMAKING.md                         |  17 +++
+ Server-Infinite/Configurations/server.json    |   3 +
+ Server-Infinite/Controllers/GameController.cs |   9 +-
+ .../Online/SaveVsmOnResultCommandHandler.cs   |   9 ++
+ .../Game/PostMatchStubsCommandHandler.cs      |  94 ++++++++++++
+ Server-Infinite/Matchmaking/Matchmaker.cs     |  63 ++++++++
+ .../Models/Config/CardServerConfig.cs         |   9 ++
+ .../Config/OnlineMatchingConfigurations.cs    |   6 +
+ Server-Infinite/Program.cs                    |   1 +
+ Tests/Matchmaking.Tests/HangFixTests.cs       | 142 ++++++++++++++++++
+ 10 files changed, 352 insertions(+), 1 deletion(-)
+ create mode 100644 Server-Infinite/Handlers/Game/PostMatchStubsCommandHandler.cs
+ create mode 100644 Tests/Matchmaking.Tests/HangFixTests.cs
+
+diff --git a/ONLINE_MATCHMAKING.md b/ONLINE_MATCHMAKING.md
+index 81e88cd..010be9c 100644
+--- a/ONLINE_MATCHMAKING.md
++++ b/ONLINE_MATCHMAKING.md
+@@ -48,6 +48,7 @@
+   "FillAfterSeconds": 15,      // short-handed room (>= 2 humans) after this wait; 3 works on a LAN, 10-15 public
+   "AllowPartialRooms": true,
+   "CpuStandInSeats": false,    // experimental: list a CPU client for each empty seat (did not fix the results hang)
++  "HumansTeamVsCpu": false,    // experimental: 2 humans -> teammates vs 2 CPU stand-ins (results-hang fix #1)
+   "StaleAfterSeconds": 20,     // drop a waiting cabinet that stopped polling (min 3 x poll interval)
+   "ClassMatchScheduleMode": "Both",  // Both | Hours | UnixTime
+   "VerboseLog": false,         // true = also one line per CheckMatching poll (debugging only)
+@@ -162,6 +163,22 @@ directly. Built-in STUN on the main server.
+   shared LM); a solo route battle vs CPU does not hang. So it is **not caused by this server**; most likely two
+   game instances on one OS interfering. Pending: cab2 in Windows Sandbox (own network stack) and a real two-PC test.
+ 
++## Results-hang fixes (2026-11-14, exvs2-lobbies `analysis/results-hang-fixes.md` section 4) — fake cabinets only
++All off by default except the log line. Tests: `Tests/Matchmaking.Tests/HangFixTests.cs`,
++exvs2-lobbies `server-sketch/loadtest/hangfix_e2e.py`.
++* `OnlineMatching.HumansTeamVsCpu` (false): a short-handed room with exactly two humans (two solos, or a 2-human team
++  waiting alone) makes them **teammates** (group 0) against two CPU stand-ins (group 1, `PCB00000NPC` / "N", each on
++  one human's own 2nd IssueNodeId id, listed after the humans). Instead of the usual 1v1 where each human has a CPU
++  partner. Needs `AllowPartialRooms`; waits `FillAfterSeconds` for a real 2v2 first. 3-human short rooms, full rooms and
++  cabinets that brought their own CPU partner are unchanged. If a stand-in id would collide with a human node, the
++  normal 1v1 forms. **Untested with the game:** whether it accepts a side with no human is unknown.
++* `PostMatchStubs` (false): minimal answers instead of `ErrServer "Unhandled case"` for SaveVsmToResult (205),
++  SaveFailedBattleLogOn (225), RegisterOption (306): Success, empty body; SaveMedal (211): ACID_SUCCESS + pilot id,
++  0 medals (ACID_NO_USE if the card is unknown); LoadReplayCard (406): ACID_NO_USE; PreSaveReplay (407): status 2
++  (reject) + `http://dummy`, so the LM skips its replay upload. Nothing is stored; log lines start with `STUB`.
++* `LogNetworkReport` (true): one `NETREPORT` line per SaveVsmOnResult: input / start delay frames, delay source, pause
++  count/frames, and per cabinet `serial@loc:rtt,max,loss`. No card data.
++
+ ## Known gaps / risks
+ * CheckMatching / CancelMatching are not authenticated: anyone who knows a node id can cancel that entry.
+ * Malformed protobuf bodies on `/match` get HTTP 500 from the model binder (the real cabinet never sends them).
+diff --git a/Server-Infinite/Configurations/server.json b/Server-Infinite/Configurations/server.json
+index 627c1bb..aeb6891 100644
+--- a/Server-Infinite/Configurations/server.json
++++ b/Server-Infinite/Configurations/server.json
+@@ -3,6 +3,8 @@
+     "IgnoreUploadSaving": false,
+     "NeedToDataPatchOfflineData": true,
+     "MaxReplaySaveSlotPerPlayer": 5,
++    "PostMatchStubs": false,
++    "LogNetworkReport": true,
+     "GameConfigurations": {
+       "TrainingMinutes": 12,
+       "FesConfigurations": {
+@@ -33,6 +35,7 @@
+       "PollingIntervalSeconds": 3,
+       "FillAfterSeconds": 15,
+       "CpuStandInSeats": false,
++      "HumansTeamVsCpu": false,
+       "AllowPartialRooms": true,
+       "SoftAttributeWaitSeconds": 15,
+       "StaleAfterSeconds": 20,
+diff --git a/Server-Infinite/Controllers/GameController.cs b/Server-Infinite/Controllers/GameController.cs
+index 3540e7c..e3c29fa 100644
+--- a/Server-Infinite/Controllers/GameController.cs
++++ b/Server-Infinite/Controllers/GameController.cs
+@@ -1,5 +1,6 @@
+ using MediatR;
+ using Microsoft.AspNetCore.Mvc;
++using Microsoft.Extensions.Options;
+ using Microsoft.OpenApi.Extensions;
+ using nue.protocol.exvs;
+ using ServerInfinite.Handlers.Game;
+@@ -15,11 +16,14 @@ public class GameController : BaseController<GameController>
+ {
+     private readonly IMediator mediator;
+     private readonly ServerDbContext context;
++    private readonly ServerInfinite.Models.Config.CardServerConfig config;
+     
+-    public GameController(IMediator mediator, ServerDbContext context)
++    public GameController(IMediator mediator, ServerDbContext context,
++        IOptions<ServerInfinite.Models.Config.CardServerConfig> options)
+     {
+         this.mediator = mediator;
+         this.context = context;
++        this.config = options.Value;
+     }
+     
+     [Route("")]
+@@ -73,6 +77,9 @@ public class GameController : BaseController<GameController>
+             MethodType.MthdCheckTime => await mediator.Send(new CheckTimeQuery(request)),
+             MethodType.MthdSaveLog => await mediator.Send(new SaveLogCommand(request)),
+             MethodType.MthdCheckResourceData => await mediator.Send(new CheckResourceDataQuery(request)),
++            // exvs2-lobbies results-hang fix #4: store-nothing answers for 205/211/225/306/406/407 (off by default)
++            var t when config.PostMatchStubs && PostMatchStubCommandHandler.Methods.Contains(t)
++                => await mediator.Send(new PostMatchStubCommand(request)),
+             _ => UnhandledResponse(request)
+         };
+ 
+diff --git a/Server-Infinite/Handlers/Game/Online/SaveVsmOnResultCommandHandler.cs b/Server-Infinite/Handlers/Game/Online/SaveVsmOnResultCommandHandler.cs
+index 5aedd51..58693d6 100644
+--- a/Server-Infinite/Handlers/Game/Online/SaveVsmOnResultCommandHandler.cs
++++ b/Server-Infinite/Handlers/Game/Online/SaveVsmOnResultCommandHandler.cs
+@@ -33,6 +33,8 @@ public class SaveVsmOnResultCommandHandler : IRequestHandler<SaveVsmOnResultComm
+     public Task<Response> Handle(SaveVsmOnResultCommand request, CancellationToken cancellationToken)
+     {
+         Request.SaveVsmOnResult save = request.Request.save_vsm_on_result;
++        if (_config.LogNetworkReport && save?.NetworkReport != null)
++            _logger.LogInformation("{Line}", NetworkReportLine(save.PilotId, save.NetworkReport));
+         if (save != null && save.Result != null && !string.IsNullOrEmpty(save.SessionId))
+         {
+             string sessionId = save.SessionId;
+@@ -127,4 +129,11 @@ public class SaveVsmOnResultCommandHandler : IRequestHandler<SaveVsmOnResultComm
+             cardProfile.Id, solo ? "solo" : "team", result.RoomId, result.WinFlag, record.ClassId, cmr.GradeId,
+             cmr.BeforeRate, record.Rate, cmr.ObtainedRate);
+     }
++
++    /// <summary>exvs2-lobbies: one log line per SaveVsmOnResult.network_report (no card data in it).</summary>
++    public static string NetworkReportLine(uint pilotId, NetworkReport n) =>
++        $"NETREPORT pilot={pilotId} input_delay={n.BattlePadInputDelayFrame}f start_delay={n.BattleStartDelayFrame}f " +
++        $"delay_src={n.DelaySrcFlag} paused={n.TotalPosedNum}x/{n.TotalPosedFrame}f pcbs=[" +
++        string.Join(" ", n.PcbDatas.Select(p =>
++            $"{p.PcbSerial}@{p.LocId}:rtt={p.Rtt}ms,max={p.MaxRtt}ms,loss={p.PacketLostRate:0.###}")) + "]";
+ }
+diff --git a/Server-Infinite/Handlers/Game/PostMatchStubsCommandHandler.cs b/Server-Infinite/Handlers/Game/PostMatchStubsCommandHandler.cs
+new file mode 100644
+index 0000000..8fb92af
+--- /dev/null
++++ b/Server-Infinite/Handlers/Game/PostMatchStubsCommandHandler.cs
+@@ -0,0 +1,94 @@
++using MediatR;
++using Microsoft.Extensions.Options;
++using nue.protocol.exvs;
++using ServerInfinite.Models.Config;
++using ServerInfinite.Persistence;
++
++namespace ServerInfinite.Handlers.Game;
++
++/// <summary>
++/// exvs2-lobbies, results-hang fix #4 (analysis/results-hang-fixes.md section 4.4). EXPERIMENTAL, only used when
++/// CardServerConfig.PostMatchStubs is true. Minimal, store-nothing answers for methods upstream leaves unhandled
++/// (they otherwise get a fast ErrServer "Unhandled case"):
++///   205 SaveVsmToResult, 225 SaveFailedBattleLogOn, 306 RegisterOption: Success, empty body (all fields optional).
++///   211 SaveMedal: card found -> ACID_SUCCESS + its pilot id, 0 medals; not found -> ACID_NO_USE.
++///   406 LoadReplayCard: ACID_NO_USE (no replay service on this server).
++///   407 PreSaveReplay: status 2 (= reject, the value upstream uses for "slots full"), url "http://dummy", so the LM
++///       skips the replay upload. (Upstream's own PreSaveReplay handler stays disabled.)
++/// Nothing is written to the DB. Card secrets are never logged.
++/// </summary>
++public record PostMatchStubCommand(Request Request) : IRequest<Response>;
++
++public class PostMatchStubCommandHandler : IRequestHandler<PostMatchStubCommand, Response>
++{
++    public static readonly HashSet<MethodType> Methods = new()
++    {
++        MethodType.MthdSaveVsmToResult, MethodType.MthdSaveMedal, MethodType.MthdSaveFailedBattleLogOn,
++        MethodType.MthdRegisterOption, MethodType.MthdLoadReplayCard, MethodType.MthdPreSaveReplay,
++    };
++
++    private readonly ILogger<PostMatchStubCommandHandler> _logger;
++    private readonly ServerDbContext _context;
++
++    public PostMatchStubCommandHandler(ILogger<PostMatchStubCommandHandler> logger, ServerDbContext context)
++    {
++        _logger = logger;
++        _context = context;
++    }
++
++    public Task<Response> Handle(PostMatchStubCommand command, CancellationToken cancellationToken)
++    {
++        var q = command.Request;
++        var r = new Response { Type = q.Type, RequestId = q.RequestId, Error = Error.Success };
++        switch (q.Type)
++        {
++            case MethodType.MthdSaveVsmToResult:
++                r.save_vsm_to_result = new Response.SaveVsmToResult();
++                _logger.LogInformation("STUB SaveVsmToResult pilot={Pilot}", q.save_vsm_to_result?.PilotId);
++                break;
++            case MethodType.MthdSaveFailedBattleLogOn:
++            {
++                var f = q.save_failed_battle_log_on;
++                r.save_failed_battle_log_on = new Response.SaveFailedBattleLogOn();
++                _logger.LogWarning("STUB SaveFailedBattleLogOn pilot={Pilot} room={Room} my_fault={Fault} mode={Mode} pilots=[{Pilots}]",
++                    f?.PilotId, f?.RoomId, f?.MyFaultFlag, f?.OnlineMatchingMode,
++                    f == null ? "" : string.Join(",", f.Pilots.Select(p => $"{p.PilotId}:{(p.MyFaultFlag ? "fault" : "ok")}")));
++                break;
++            }
++            case MethodType.MthdRegisterOption:
++                r.register_option = new Response.RegisterOption();
++                _logger.LogInformation("STUB RegisterOption user={User} friend={Friend} ng={Ng} (not stored)",
++                    q.register_option?.MobileUserId, q.register_option?.FriendPilotId, q.register_option?.NgPilotId);
++                break;
++            case MethodType.MthdSaveMedal:
++            {
++                var m = q.save_medal;
++                var card = m == null || string.IsNullOrEmpty(m.ChipId) ? null : _context.CardProfiles
++                    .Where(x => x.ChipId == m.ChipId && x.AccessCode == (m.AccessCode ?? ""))
++                    .Select(x => new { x.Id }).FirstOrDefault();
++                r.save_medal = new Response.SaveMedal
++                {
++                    AcidError = card == null ? AcidError.AcidNoUse : AcidError.AcidSuccess,
++                    PilotId = card == null ? 0u : (uint)card.Id,
++                    SeasonMedal = 0, GrantMedal = 0, GrantLocMedal = 0,
++                };
++                _logger.LogInformation("STUB SaveMedal mode={Mode} medal={Medal} card={Found}", m?.MedalMode, m?.Medal,
++                    card == null ? "not found" : $"pilot {card.Id}");
++                break;
++            }
++            case MethodType.MthdLoadReplayCard:
++                r.load_replay_card = new Response.LoadReplayCard { AcidError = AcidError.AcidNoUse };
++                _logger.LogInformation("STUB LoadReplayCard -> ACID_NO_USE (no replay service)");
++                break;
++            case MethodType.MthdPreSaveReplay:
++                r.pre_save_replay = new Response.PreSaveReplay { Status = 2, Url = "http://dummy" };
++                _logger.LogInformation("STUB PreSaveReplay size={Size} -> status 2 (reject, upload skipped)", q.pre_save_replay?.ReplaySize);
++                break;
++            default:
++                r.Error = Error.ErrServer;
++                r.ErrorMsg = "Unhandled case";
++                break;
++        }
++        return Task.FromResult(r);
++    }
++}
+diff --git a/Server-Infinite/Matchmaking/Matchmaker.cs b/Server-Infinite/Matchmaking/Matchmaker.cs
+index cbf5a79..dd85f21 100644
+--- a/Server-Infinite/Matchmaking/Matchmaker.cs
++++ b/Server-Infinite/Matchmaking/Matchmaker.cs
+@@ -165,6 +165,13 @@ public sealed class Matchmaker
+     /// Off by default: in the real game it did not fix the results-screen hang (which also happens without any matchmaker).
+     /// </summary>
+     public bool CpuStandIns { get; set; } = false;
++    /// <summary>
++    /// results-hang fix #1 (analysis/results-hang-fixes.md section 4.1), EXPERIMENTAL, off by default: a short-handed
++    /// room with exactly two humans (two solos, or one 2-human team alone) puts both humans on side 0 and fills side 1
++    /// with two CPU stand-ins (the humans' own 2nd IssueNodeId ids), instead of a 1v1 where each human has a CPU partner.
++    /// Whether the game accepts a side with no human is untested.
++    /// </summary>
++    public bool HumansVsCpu { get; set; } = false;
+     public Action<string>? Log { get; set; }
+     /// <summary>Warnings (address mismatch, missing STUN result). Falls back to <see cref="Log"/>.</summary>
+     public Action<string>? Warn { get; set; }
+@@ -471,7 +478,19 @@ public sealed class Matchmaker
+                     var pool = bucket.Skip(i + 1).Where(u => Compatible(a, u, now)).Take(PoolMax).ToList();
+                     var sides = BestRoom(a, pool, idx, now, false);
+                     if (sides == null && AllowPartial && now - a.Created >= FillAfter)
++                    {
+                         sides = BestRoom(a, pool, idx, now, true);
++                        // results-hang fix #1: two humans -> teammates vs two CPU stand-ins (3-human short rooms unchanged)
++                        if (HumansVsCpu && (sides == null || Humans(sides.Value) <= 2))
++                        {
++                            var together = HumansTogether(a, pool);
++                            if (together != null && MakeHumansVsCpuRoom(together, now))
++                            {
++                                made = true;
++                                continue;
++                            }
++                        }
++                    }
+                     if (sides != null)
+                     {
+                         MakeRoom(sides.Value, now);
+@@ -483,6 +502,50 @@ public sealed class Matchmaker
+         } while (made);
+     }
+ 
++    private static int Humans((List<Unit> S0, List<Unit> S1) sides) => sides.S0.Concat(sides.S1).Sum(u => u.Humans.Count());
++
++    /// <summary>results-hang fix #1: the units that put exactly two humans on one side (2 slots, no CPU partner
++    /// entry): a lone 2-human team, or the anchor solo plus the first compatible solo (FIFO).</summary>
++    private static List<Unit>? HumansTogether(Unit a, List<Unit> pool)
++    {
++        static bool AllHuman(Unit u) => u.Clients.All(Unit.IsHuman);
++        if (!AllHuman(a)) return null;
++        if (a.IsTeam) return a.Slots == TeamSlots ? new List<Unit> { a } : null;
++        var b = pool.FirstOrDefault(u => !u.IsTeam && AllHuman(u));
++        return b == null ? null : new List<Unit> { a, b };
++    }
++
++    /// <summary>results-hang fix #1: both humans in group 0, one CPU stand-in per human in group 1 (on that human's own
++    /// 2nd node id, listed after all humans). False (no room) if a stand-in node id can't be found.</summary>
++    private bool MakeHumansVsCpuRoom(List<Unit> units, double now)
++    {
++        var humans = units.SelectMany(u => u.Clients).ToList();
++        var npcs = new List<RoomClient>();
++        foreach (var h in humans)
++        {
++            var node = StandInNode(h.NodeId, units);
++            if (node == 0 || npcs.Any(n => n.Client.NodeId == node)) return false;
++            npcs.Add(new RoomClient(1, StandIn(h, node)));
++        }
++        var room = new Room
++        {
++            RoomId = _nextRoom++, At = now, World = units[0].World, Humans = humans.Count,
++            Clients = humans.Select(c => new RoomClient(0, c)).Concat(npcs).ToList(),
++        };
++        foreach (var u in units)
++        {
++            _queue.Remove(u);
++            u.Room = room;
++        }
++        Log?.Invoke($"MATCH room={room.RoomId} {units[0].WorldName} humans-vs-cpu " +
++                    $"[{string.Join(",", humans.Select(c => c.NodeId))}] vs CPU [{string.Join(",", npcs.Select(n => n.Client.NodeId))}] " +
++                    $"(humans={humans.Count}/4, HumansVsCpu)");
++        var src = new Dictionary<uint, string>();
++        foreach (var u in units) foreach (var kv in u.SourceByNode) src[kv.Key] = kv.Value;
++        Log?.Invoke(NetDiag.MatchLine(room.RoomId, room.Clients.Select(c => (c.GroupId, c.Client)), src, Realms));
++        return true;
++    }
++
+     private void MakeRoom((List<Unit> S0, List<Unit> S1) sides, double now)
+     {
+         var clients = new List<RoomClient>();
+diff --git a/Server-Infinite/Models/Config/CardServerConfig.cs b/Server-Infinite/Models/Config/CardServerConfig.cs
+index 2045e20..e7a5e31 100644
+--- a/Server-Infinite/Models/Config/CardServerConfig.cs
++++ b/Server-Infinite/Models/Config/CardServerConfig.cs
+@@ -14,6 +14,15 @@ public class CardServerConfig
+     // exvs2-lobbies: online matchmaking (experimental)
+     public OnlineMatchingConfigurations OnlineMatching { get; set; } = new();
+ 
++    /// <summary>exvs2-lobbies results-hang fix #4 (experimental, off by default): answer SaveVsmToResult (205),
++    /// SaveMedal (211), SaveFailedBattleLogOn (225), RegisterOption (306), LoadReplayCard (406) and PreSaveReplay (407)
++    /// with minimal Success replies instead of ErrServer "Unhandled case". Nothing is stored.</summary>
++    public bool PostMatchStubs { get; set; } = false;
++
++    /// <summary>exvs2-lobbies: log SaveVsmOnResult.network_report (per-cabinet RTT / loss, input delay, pauses), one
++    /// line per report. Logging only.</summary>
++    public bool LogNetworkReport { get; set; } = true;
++
+     // exvs2-lobbies: online tag / partner invites (experimental)
+     public OnlineTagConfigurations OnlineTag { get; set; } = new();
+ 
+diff --git a/Server-Infinite/Models/Config/OnlineMatchingConfigurations.cs b/Server-Infinite/Models/Config/OnlineMatchingConfigurations.cs
+index 6c89f8c..747b322 100644
+--- a/Server-Infinite/Models/Config/OnlineMatchingConfigurations.cs
++++ b/Server-Infinite/Models/Config/OnlineMatchingConfigurations.cs
+@@ -45,6 +45,12 @@ public class OnlineMatchingConfigurations
+     /// group) for every empty seat, so each seat is owned by a cabinet. Experimental, off by default: tested
+     /// 2026-11-13, it did not fix the results-screen hang.</summary>
+     public bool CpuStandInSeats { get; set; } = false;
++    /// <summary>results-hang fix #1 (analysis/results-hang-fixes.md section 4.1), EXPERIMENTAL, off by default.
++    /// When a short-handed room would have exactly two humans (two solos, or a 2-human team waiting alone), the two
++    /// humans become teammates (group 0) against two CPU stand-ins (group 1, each on one human's 2nd node id) instead
++    /// of opponents with a CPU partner each. Uses FillAfterSeconds + AllowPartialRooms. Untested with the real game:
++    /// whether the game accepts a side with no human is unknown.</summary>
++    public bool HumansTeamVsCpu { get; set; } = false;
+     /// <summary>Seconds during which a "soft" mode attribute (win-rate bucket, veteran flag) must match.</summary>
+     public double SoftAttributeWaitSeconds { get; set; } = 15;
+     /// <summary>Seconds without a CheckMatching poll before a waiting cabinet is dropped (no ghost matches).</summary>
+diff --git a/Server-Infinite/Program.cs b/Server-Infinite/Program.cs
+index e8c496f..32c020a 100644
+--- a/Server-Infinite/Program.cs
++++ b/Server-Infinite/Program.cs
+@@ -90,6 +90,7 @@ try
+             Warn = message => logger.LogWarning("{Message}", message),
+             Verbose = mm.VerboseLog,
+             CpuStandIns = mm.CpuStandInSeats,
++            HumansVsCpu = mm.HumansTeamVsCpu,
+             Realms = ServerInfinite.Matchmaking.NetDiag.ParseRealms(mm.NetworkRealms),
+             InStoreScope = mm.InStoreScope,
+             ShopKeys = ServerInfinite.Matchmaking.NetDiag.ParseShopKeys(mm.ShopKeys),
+diff --git a/Tests/Matchmaking.Tests/HangFixTests.cs b/Tests/Matchmaking.Tests/HangFixTests.cs
+new file mode 100644
+index 0000000..a4934f4
+--- /dev/null
++++ b/Tests/Matchmaking.Tests/HangFixTests.cs
+@@ -0,0 +1,142 @@
++using nue.protocol.mms;
++using ServerInfinite.Matchmaking;
++using Xunit;
++
++namespace Matchmaking.Tests;
++
++// results-hang fix #1 (analysis/results-hang-fixes.md section 4.1): HumansVsCpu. Fake entries only.
++public class HangFixTests
++{
++    private static Client Cl(uint node, bool human = true)
++    {
++        var c = new Client
++        {
++            NodeId = node, PcbSerial = human ? $"P{node}" : Matchmaker.NpcSerial, LocId = $"L{node}", PrefCode = 13,
++            GlobalIpaddress = "203.0.113.1", NatMappingType = NatMappingType.NmEndpointIndependent,
++            NatFilteringType = NatFilteringType.NfEndpointIndependent
++        };
++        c.Properties.Add(new Client.Property { PropertyId = 0, PropertyValue = human ? "Y" : "N" });
++        return c;
++    }
++
++    private static Request.EntryMatching Solo(uint node, uint world = 23, uint? partner = null, bool cpuPartner = false)
++    {
++        var e = new Request.EntryMatching
++        {
++            ApplyId = 1, Myclient = Cl(node), MatchingTimeout = 150,
++            Myplayer = new Player { BanapassportAmId = node },
++            World = new World { MuchaGameId = "GIB1", Version = 1, WorldId = world }
++        };
++        e.Myplayer.Parameters.Add(new Player.Parameter { AttributeId = 1, parameter = 0 });
++        if (partner != null)
++            e.Groups.Add(new Request.EntryMatching.Group
++            {
++                Client = Cl(partner.Value, !cpuPartner), Player = new Player { BanapassportAmId = cpuPartner ? 0 : partner.Value }
++            });
++        return e;
++    }
++
++    private static Matchmaker New(bool on = true, List<string>? log = null) =>
++        new(fillAfter: 30, allowPartial: true, softWait: 15, seed: 1)
++        {
++            StaleAfter = 1e6, HumansVsCpu = on, Realms = null, Log = log == null ? null : log.Add
++        };
++
++    [Fact]
++    public void OffByDefault()
++    {
++        Assert.False(new Matchmaker().HumansVsCpu);
++        var mm = New(on: false);
++        mm.Entry(Solo(1100), 0); mm.Entry(Solo(1102), 0);
++        var room = mm.Check(1100, 31).Room!;
++        Assert.Equal(2, room.Clients.Count);
++        Assert.NotEqual(room.Clients[0].GroupId, room.Clients[1].GroupId);   // unchanged: 1v1
++    }
++
++    [Fact]
++    public void TwoSolosBecomeTeammatesAgainstTwoStandIns()
++    {
++        var log = new List<string>();
++        var mm = New(log: log);
++        mm.RegisterIssued(new uint[] { 1100, 1101 });
++        mm.RegisterIssued(new uint[] { 1102, 1103 });
++        mm.Entry(Solo(1100), 0); mm.Entry(Solo(1102), 0);
++        Assert.Null(mm.Check(1100, 10).Room);                     // waits FillAfter for a real 2v2 first
++        var room = mm.Check(1100, 31).Room!;
++        Assert.Equal(4, room.Clients.Count);
++        Assert.Equal(new uint[] { 1100, 1102 }, room.Clients.Where(c => c.GroupId == 0).Select(c => c.Client.NodeId));
++        var cpu = room.Clients.Where(c => c.GroupId == 1).ToList();
++        Assert.Equal(new uint[] { 1101, 1103 }, cpu.Select(c => c.Client.NodeId));
++        Assert.All(cpu, c =>
++        {
++            Assert.False(Matchmaker.Unit.IsHuman(c.Client));
++            Assert.Equal(Matchmaker.NpcSerial, c.Client.PcbSerial);
++            Assert.Equal("0.0.0.0", c.Client.GlobalIpaddress);
++        });
++        Assert.Equal(2, room.Humans);
++        Assert.Same(room, mm.Check(1102, 31).Room);               // both cabinets get the same list
++        Assert.Contains(log, l => l.Contains("humans-vs-cpu"));
++    }
++
++    [Fact]
++    public void LoneTwoHumanTeamPlaysTwoStandIns()
++    {
++        var mm = New();
++        mm.RegisterIssued(new uint[] { 1200, 1201 });
++        mm.RegisterIssued(new uint[] { 1202, 1203 });
++        mm.Entry(Solo(1200, partner: 1202), 0);
++        Assert.Null(mm.Check(1200, 10).Room);
++        var room = mm.Check(1200, 31).Room!;
++        Assert.Equal(new uint[] { 1200, 1202 }, room.Clients.Where(c => c.GroupId == 0).Select(c => c.Client.NodeId));
++        Assert.Equal(new uint[] { 1201, 1203 }, room.Clients.Where(c => c.GroupId == 1).Select(c => c.Client.NodeId));
++        Assert.Same(room, mm.Check(1202, 31).Room);
++    }
++
++    [Fact]
++    public void LoneTeamWithoutTheFlagNeverMatches()
++    {
++        var mm = New(on: false);
++        mm.Entry(Solo(1200, partner: 1202), 0);
++        Assert.Null(mm.Check(1200, 60).Room);
++    }
++
++    [Fact]
++    public void FullRoomsAndThreeHumanRoomsAreUnchanged()
++    {
++        var mm = New();
++        foreach (var n in new uint[] { 1300, 1302, 1304, 1306 }) mm.Entry(Solo(n), 0);
++        var r4 = mm.Check(1300, 1).Room!;
++        Assert.Equal(4, r4.Clients.Count);
++        Assert.All(r4.Clients, c => Assert.True(Matchmaker.Unit.IsHuman(c.Client)));
++        Assert.Equal(2, r4.Clients.Count(c => c.GroupId == 0));
++
++        var m3 = New();
++        m3.Entry(Solo(1400, partner: 1402), 0); m3.Entry(Solo(1404), 0);   // 2-human team + solo
++        var r3 = m3.Check(1400, 31).Room!;
++        var solo = r3.Clients.Single(c => c.Client.NodeId == 1404);
++        Assert.NotEqual(r3.Clients.Single(c => c.Client.NodeId == 1400).GroupId, solo.GroupId);
++    }
++
++    [Fact]
++    public void CpuPartnerTeamsAreNotRegrouped()
++    {
++        // a cabinet that brought its own CPU partner ("N") keeps its layout: no humans-vs-cpu room
++        var mm = New();
++        mm.Entry(Solo(1500, partner: 1501, cpuPartner: true), 0); mm.Entry(Solo(1502), 0);
++        var room = mm.Check(1502, 31).Room!;
++        Assert.NotEqual(room.Clients.Single(c => c.Client.NodeId == 1500).GroupId,
++                        room.Clients.Single(c => c.Client.NodeId == 1502).GroupId);
++    }
++
++    [Fact]
++    public void StandInIdsNeverCollideWithHumans()
++    {
++        // no IssueNodeId batch known (server restart): id + 1, unless a human holds it -> fall back to the 1v1
++        var mm = New();
++        mm.Entry(Solo(2000), 0); mm.Entry(Solo(2001), 0);
++        var room = mm.Check(2000, 31).Room!;
++        var ids = room.Clients.Select(c => c.Client.NodeId).ToList();
++        Assert.Equal(ids.Count, ids.Distinct().Count());
++        Assert.DoesNotContain(room.Clients, c => c.Client.NodeId == 2001 && !Matchmaker.Unit.IsHuman(c.Client));
++    }
++}
 -- 
 2.47.3
 

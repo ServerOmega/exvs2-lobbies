@@ -1,0 +1,174 @@
+# PROPOSAL ONLY - not built, not run, not tested. exvs2-lobbies results-hang fix #2.
+# Against asesidaa/EXVS2-POC @ 23437956f869df7dfa4f1e8347a5db1825b480c5 (master, 2025-08-11), files under EXVS2-POC/.
+# Apply in a POC checkout with:  patch -p1 < poc-banapass-cancel.diff   (or git apply)
+# Why: analysis/results-hang-fixes.md section 4.2. BngRwReqCancel now completes the pending BngRwReqWaitTouch
+# (callback with an all-zero 168-byte card buffer and status CardCancelStatus, default 3), BngRwReqWaitTouch no longer
+# sleeps 250 ms on the game thread, and each reader thread fires at most once and only for its own request.
+diff -ru a/EXVS2-POC/Config.cpp b/EXVS2-POC/Config.cpp
+--- a/EXVS2-POC/Config.cpp
++++ b/EXVS2-POC/Config.cpp
+@@ -189,6 +189,8 @@
+     config->UsePyBanapassReader = reader.GetBoolean("config", "UsePyBanapassReader", false);
+     config->SkipAutoCreateForPyBanapassReader = reader.GetBoolean("config", "SkipAutoCreateForPyBanapassReader", true);
+     config->AutomaticCardButton = reader.GetBoolean("config", "AutomaticCardButton", false);
++    config->CardCancelCallback = reader.GetBoolean("config", "CardCancelCallback", true);
++    config->CardCancelStatus = (int)reader.GetInteger("config", "CardCancelStatus", 3);
+     
+     config->CardReaderComPort = reader.Get("config", "cardreadercomport", "COM4");
+     config->CardFileBasePath = reader.Get("config", "CardFileBasePath", "");
+diff -ru a/EXVS2-POC/Configs.h b/EXVS2-POC/Configs.h
+--- a/EXVS2-POC/Configs.h
++++ b/EXVS2-POC/Configs.h
+@@ -58,6 +58,8 @@
+     bool UseRealCardReader = false;
+     bool UsePyBanapassReader = false;
+     bool AutomaticCardButton = false;
++    bool CardCancelCallback = true;   // exvs2-lobbies proposal: BngRwReqCancel completes a pending touch wait
++    int CardCancelStatus = 3;         // status passed to the touch callback on cancel
+     bool SkipAutoCreateForPyBanapassReader = true;
+     std::string CardReaderComPort;
+     std::string CardFileBasePath;
+diff -ru a/EXVS2-POC/banapass.cpp b/EXVS2-POC/banapass.cpp
+--- a/EXVS2-POC/banapass.cpp
++++ b/EXVS2-POC/banapass.cpp
+@@ -5,6 +5,8 @@
+ #include <string>
+ #include <thread>
+ #include <fstream>
++#include <atomic>
++#include <mutex>
+ 
+ #include <Windows.h>
+ #include <joystickapi.h>
+@@ -20,7 +22,23 @@
+ char hex_characters[] = {'0', '1' , '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E' ,'F'};
+ static char OPEN_BANAPASS_DELIMITER = ';';
+ 
+-bool readerActive = false;
++// exvs2-lobbies proposal: one generation number per BngRwReqWaitTouch instead of a shared bool + 250 ms sleep.
++// A reader thread only fires while its generation is current, fires at most once, and exits after that.
++static std::atomic<unsigned> touchGeneration{0};
++static std::mutex touchMutex;
++static void (*pendingTouchCallback)(int, int, void*, void*) = nullptr;
++static void* pendingTouchContext = nullptr;
++
++// Claim the pending touch request of generation `gen` (false if it was cancelled or replaced meanwhile).
++static bool ClaimTouch(unsigned gen)
++{
++    std::lock_guard<std::mutex> lock(touchMutex);
++    if (touchGeneration.load() != gen || pendingTouchCallback == nullptr) return false;
++    pendingTouchCallback = nullptr;
++    pendingTouchContext = nullptr;
++    touchGeneration.fetch_add(1);
++    return true;
++}
+ 
+ using Random = effolkronium::random_static;
+ 
+@@ -176,8 +194,8 @@
+     callback(0, 0, someStructPtr);
+ }
+ 
+-void StartReadThread(void (*callback)(int, int, void*, void*), void* cardStuctPtr) {
+-    while (readerActive)
++void StartReadThread(void (*callback)(int, int, void*, void*), void* cardStuctPtr, unsigned gen) {
++    while (touchGeneration.load() == gen)
+     {
+         using namespace std::chrono_literals;
+         std::this_thread::sleep_for(100ms);
+@@ -228,8 +246,8 @@
+                     memcpy(rawCardData + 0x2C, chipId.c_str(), chipId.size() + 1);
+ 
+                     stream.close();
+-                    callback(0, 0, rawCardData, cardStuctPtr);
+-                    continue;
++                    if (ClaimTouch(gen)) callback(0, 0, rawCardData, cardStuctPtr);
++                    return;   // one touch = one callback; the game re-arms with a new BngRwReqWaitTouch
+                 }
+ 
+                 stream.close();
+@@ -247,7 +265,8 @@
+             memcpy(rawCardData + 0x2C, chipId.c_str(), chipId.size() + 1);
+ 
+             trace("Callback from read card");
+-            callback(0, 0, rawCardData, cardStuctPtr);
++            if (ClaimTouch(gen)) callback(0, 0, rawCardData, cardStuctPtr);
++            return;   // one touch = one callback
+         }
+     }
+ }
+@@ -485,6 +504,34 @@
+     {
+         return -100;
+     }
++
++    // exvs2-lobbies proposal: finish a pending touch wait. vsac29 keeps its reader in "touch pending" until the
++    // touch callback has run (it sets the result's done flag), so without this a cancelled wait never completes.
++    // The callback runs on a short worker thread (like a real reader) with an all-zero 168-byte card buffer (the game
++    // copies 0xa8 bytes from it unconditionally) and status CardCancelStatus (default 3, which vsac29's poll treats as
++    // "finished, no card, no error").
++    void (*cb)(int, int, void*, void*) = nullptr;
++    void* ctx = nullptr;
++    {
++        std::lock_guard<std::mutex> lock(touchMutex);
++        if (globalConfig.CardCancelCallback && pendingTouchCallback != nullptr)
++        {
++            cb = pendingTouchCallback;
++            ctx = pendingTouchContext;
++            pendingTouchCallback = nullptr;
++            pendingTouchContext = nullptr;
++        }
++        touchGeneration.fetch_add(1);   // stops the current reader thread either way
++    }
++    if (cb != nullptr)
++    {
++        int status = globalConfig.CardCancelStatus;
++        std::thread([cb, ctx, status]() {
++            static unsigned char emptyCard[168] = {};
++            trace("BngRwReqCancel: completing the pending touch wait with status %d", status);
++            cb(0, status, emptyCard, ctx);
++        }).detach();
++    }
+     return 1;
+ }
+ 
+@@ -565,14 +612,17 @@
+         return originalFunction(a, maxIntSomehow, c, callback, card_struct_ptr);
+     }
+ 
+-    // Hack to make sure previous threads have exited
+-    readerActive = false;
+-    using namespace std::chrono_literals;
+-    std::this_thread::sleep_for(250ms);
+-
+-    readerActive = true;
++    // exvs2-lobbies proposal: no 250 ms sleep on the game thread. A new generation retires the previous reader
++    // thread (it sees a stale generation on its next 100 ms tick and exits without calling back).
++    unsigned gen;
++    {
++        std::lock_guard<std::mutex> lock(touchMutex);
++        gen = touchGeneration.fetch_add(1) + 1;
++        pendingTouchCallback = callback;
++        pendingTouchContext = card_struct_ptr;
++    }
+ 
+-    std::thread t(StartReadThread, callback, card_struct_ptr);
++    std::thread t(StartReadThread, callback, card_struct_ptr, gen);
+     t.detach();
+ 
+     return 1;
+diff -ru a/EXVS2-POC/config.ini b/EXVS2-POC/config.ini
+--- a/EXVS2-POC/config.ini
++++ b/EXVS2-POC/config.ini
+@@ -60,6 +60,11 @@
+ # Optional: Automatically spamming Card Reading Button, default = false
+ AutomaticCardButton = false
+ 
++# Optional (exvs2-lobbies proposal): a cancelled card wait calls the game back, default = true
++CardCancelCallback = true
++# Status code passed on cancel (3 = "finished, no card" in vsac29), default = 3
++CardCancelStatus = 3
++
+ # Optional: Disable Auto Create card.txt / card.ini when UsePyBanapassReader = true
+ SkipAutoCreateForPyBanapassReader = true
+ 
