@@ -113,9 +113,11 @@ Lines to watch, in the order a match happens:
 | `MATCH room=R <mode> S[..] vs S[..] (humans=x/4)` + `MATCH-NET room=R ...` | a room formed; MATCH-NET shows which address each pair will dial |
 | `drop nodes=[..] reason=...` | a player left the queue (cancel, timeout, stopped polling) |
 | `check node=N -> ...` | one line per poll; only with `VerboseLog: true` |
+| `MMS-POST <method> ... room=R +Ts` / `STUN-POST ...` | that cabinet called the matchmaker / STUN T seconds after its room was made (e.g. a re-queue). Nothing here between battle end and the end of a hung results screen = the matchmaker isn't involved |
+| `MMS-UNHANDLED method=...` | a matchmaking method this server doesn't know (please report it) |
 Details: [networking-issues.md §6](../analysis/networking-issues.md#6-reading-the-network-log).
 
-### A6. Split setup: a separate card server forwards matchmaking
+### A6. Split setup: own card server, shared matchmaker
 Players can keep their own card server (cards stay local) and only match on the shared server. On the
 **player's** card server (the same patched build):
 ```json
@@ -128,6 +130,8 @@ Players can keep their own card server (cards stay local) and only match on the 
 }
 ```
 The cabinet then registers on its own card server, but queues on (and gets STUN from) the shared matchmaker.
+The card server only hands the cabinet the `MatchUrl` at boot; it never talks to the matchmaker itself, and nothing
+goes between the two servers before, during or after a match (the cabinet calls `MatchUrl` directly).
 Results are still saved to the player's own card server. This was tested on 2026-11-13 (one cabinet on a second
 card-server instance, one directly on the matchmaker; they matched and played).
 

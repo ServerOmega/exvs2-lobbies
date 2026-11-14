@@ -15,7 +15,7 @@ server, v1.2.0, commit `7f4b280`) so that it:
 * can be built and run **on Linux** (`-p:LinuxHost=true`) as well as Windows.
 
 Upstream has **no license**, so it is not forked or redistributed here — only our changes, as a patch
-(`online-matchmaking.patch`, a `git format-patch 7f4b280..online-matchmaking` of the local branch; 12 commits).
+(`online-matchmaking.patch`, a `git format-patch 7f4b280..online-matchmaking` of the local branch; 14 commits).
 Full change list and config reference: `ONLINE_MATCHMAKING.md` inside the patch.
 
 Step-by-step hosting / player guide: [`docs/SETUP.md`](../../docs/SETUP.md).
@@ -25,13 +25,13 @@ Needs the .NET 9 SDK (`yay -S dotnet-sdk` on Arch; on Windows install .NET 9 SDK
 ```bash
 git clone https://github.com/Chiang-17/EXVS2-IB-Server && cd EXVS2-IB-Server
 git checkout 7f4b280
-git am /path/to/exvs2-matchmaking/server-sketch/ib-server/online-matchmaking.patch    # creates 12 commits
+git am /path/to/exvs2-matchmaking/server-sketch/ib-server/online-matchmaking.patch    # creates 14 commits
 
 # Windows server (like upstream's release):
 dotnet publish Server-Infinite -c Release -r win-x64
 # or Linux server:
 dotnet build Server-Infinite -c Release -p:LinuxHost=true -o out
-# matchmaker unit tests (56 tests):
+# matchmaker unit tests (93 tests):
 dotnet test Tests/Matchmaking.Tests
 ```
 Copy your existing `ServerInfinite.db` next to the new build if you want to keep cards; the new migration
@@ -59,6 +59,7 @@ In `Configurations/server.json` under `CardServerConfig` → `OnlineMatching`:
 | `NetworkRealms` | `""` | players in different network realms (Radmin 26/8, Hamachi 25/8, 100.64/10, private = lan, rest = internet) are never matched together; `"off"` or `"name=cidr,..."` ([lm-and-online.md](../../analysis/lm-and-online.md)) |
 | `InStoreScope` / `ShopKeys` | `Site` / `""` | in-store match (worlds 15/16) only within one shop: shop code + the shop's public IP (`ShopCode` = code only). `ShopKeys` names a shop on several IPs: `"SHOPA=203.0.113.10/32 203.0.113.11/32"` |
 | `VerboseLog` | `false` | also log every CheckMatching poll (address/NAT lines are always logged once per entry / match) |
+| `LogPostMatchTraffic` | `true` | logging only: `MMS-POST` / `STUN-POST` lines for matchmaker / STUN traffic from a cabinet up to 30 min after its match, `MMS-UNHANDLED` for unknown methods ([post-match-server-traffic.md](../../analysis/post-match-server-traffic.md)) |
 
 Online tag (play with a chosen partner from another shop) has its own section, `CardServerConfig` → `OnlineTag`:
 
