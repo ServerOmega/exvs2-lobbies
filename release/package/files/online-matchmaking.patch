@@ -1,7 +1,7 @@
 From 46f2cf5f59c4858078e5c4d44e3d60923d7e15c1 Mon Sep 17 00:00:00 2001
 From: ServerOmega <69215510+ServerOmega@users.noreply.github.com>
 Date: Fri, 13 Nov 2026 07:32:41 -0800
-Subject: [PATCH 01/12] Online matchmaking (experimental): STUN+MMS in
+Subject: [PATCH 01/14] Online matchmaking (experimental): STUN+MMS in
  RegisterPcb, Entry/Check/Cancel matchmaker, IB class-match tables, ranked
  result persistence, Linux build option; load-test fixes
 
@@ -2328,7 +2328,7 @@ index 0000000..3b81d9a
 From 59a8ceaba76b4a9c00743b17e00ecb7abdc89ed3 Mon Sep 17 00:00:00 2001
 From: ServerOmega <69215510+ServerOmega@users.noreply.github.com>
 Date: Fri, 13 Nov 2026 14:24:50 -0800
-Subject: [PATCH 02/12] RegisterCard: fall back to pending card by access code
+Subject: [PATCH 02/14] RegisterCard: fall back to pending card by access code
  when SessionId is empty (POC clients)
 
 ---
@@ -2366,7 +2366,7 @@ index da8f5ea..3029cb0 100644
 From c10e1826eccd88272306b1f2f71b16126626baba Mon Sep 17 00:00:00 2001
 From: ServerOmega <69215510+ServerOmega@users.noreply.github.com>
 Date: Fri, 13 Nov 2026 14:38:55 -0800
-Subject: [PATCH 03/12] Built-in RFC 5389/5780 STUN server (BuiltinStun),
+Subject: [PATCH 03/14] Built-in RFC 5389/5780 STUN server (BuiltinStun),
  single-IP or two-IP
 
 ---
@@ -2598,7 +2598,7 @@ index bda49e2..a9c56ab 100644
 From 9295ed8babeb0d6e6651d2c6790f26f1b85b6061 Mon Sep 17 00:00:00 2001
 From: ServerOmega <69215510+ServerOmega@users.noreply.github.com>
 Date: Fri, 13 Nov 2026 18:53:25 -0800
-Subject: [PATCH 04/12] Built-in STUN: bind to StunHost when it is a local
+Subject: [PATCH 04/14] Built-in STUN: bind to StunHost when it is a local
  address
 
 On a multi-homed Windows PC (Ethernet + N2N/VPN adapter) a socket bound to
@@ -2657,7 +2657,7 @@ index 872d2b3..4ef4c22 100644
 From 060e241c15c6a6ede6d3c0a9e267f1122e06afdd Mon Sep 17 00:00:00 2001
 From: ServerOmega <69215510+ServerOmega@users.noreply.github.com>
 Date: Fri, 13 Nov 2026 18:53:25 -0800
-Subject: [PATCH 05/12] SaveBadge: clamp badge exp at 0
+Subject: [PATCH 05/14] SaveBadge: clamp badge exp at 0
 
 A lost online match reported a negative badge point and the badge exp went
 0 -> -20 in the real game (2026-11-13). Clamp the stored value to >= 0.
@@ -2685,7 +2685,7 @@ index 90e35a8..5fad533 100644
 From a6cdb59e736f93bbb922a85b637ee0b9888254fc Mon Sep 17 00:00:00 2001
 From: ServerOmega <69215510+ServerOmega@users.noreply.github.com>
 Date: Fri, 13 Nov 2026 18:53:25 -0800
-Subject: [PATCH 06/12] Matchmaker: optional CPU stand-in seats;
+Subject: [PATCH 06/14] Matchmaker: optional CPU stand-in seats;
  FillAfterSeconds default 15
 
 CpuStandInSeats (default false, experimental): in a short-handed room each
@@ -3036,7 +3036,7 @@ index 3b81d9a..b5b7cbb 100644
 From 679ae7d833acb2a84183f4844568c34134ac5adf Mon Sep 17 00:00:00 2001
 From: ServerOmega <69215510+ServerOmega@users.noreply.github.com>
 Date: Fri, 13 Nov 2026 18:53:49 -0800
-Subject: [PATCH 07/12] ONLINE_MATCHMAKING.md: first real-game results
+Subject: [PATCH 07/14] ONLINE_MATCHMAKING.md: first real-game results
  (2026-11-13), BuiltinStun / CpuStandInSeats / FillAfterSeconds config
 
 ---
@@ -3110,7 +3110,7 @@ index 2a72884..65ee897 100644
 From 4ecdd01d345a51c3a5560a882691a6e492be2c03 Mon Sep 17 00:00:00 2001
 From: ServerOmega <69215510+ServerOmega@users.noreply.github.com>
 Date: Fri, 13 Nov 2026 19:08:01 -0800
-Subject: [PATCH 08/12] Matchmaker: pair worlds for online tag (5, pair key)
+Subject: [PATCH 08/14] Matchmaker: pair worlds for online tag (5, pair key)
  and partner recruit (21 casual, 22 by class)
 
 Exactly two solo cabinets per room, both group 0, fixed order (world 5: lower am_id = game's leader first;
@@ -3601,7 +3601,7 @@ index 0000000..f7c4beb
 From e460603df7dd164e85b3ed5cd456994a819a2601 Mon Sep 17 00:00:00 2001
 From: ServerOmega <69215510+ServerOmega@users.noreply.github.com>
 Date: Fri, 13 Nov 2026 19:11:51 -0800
-Subject: [PATCH 09/12] Online tag: send tag teams in LoadCard (36); WebUI
+Subject: [PATCH 09/14] Online tag: send tag teams in LoadCard (36); WebUI
  invite checks the partner's code server-side
 
 * LoadCard.MobileUserGroup.tag_teams: every team the card leads or partners, partner_id = partner's pilot id
@@ -4043,7 +4043,7 @@ index 27c6cb7..94b83aa 100644
 From dcf1e9cf9fddc8862ad034846ebf1a1fb167a3d5 Mon Sep 17 00:00:00 2001
 From: ServerOmega <69215510+ServerOmega@users.noreply.github.com>
 Date: Fri, 13 Nov 2026 19:16:15 -0800
-Subject: [PATCH 10/12] WebUI: re-enable the Teams tab (online-tag invite) and
+Subject: [PATCH 10/14] WebUI: re-enable the Teams tab (online-tag invite) and
  fix its crash on a new team
 
 Upstream hid the Teams tab; creating a team there (partner's user id + invitation code) is how a player
@@ -4139,7 +4139,7 @@ index 3709ff7..f37e4f8 100644
 From 0e7ec86f35d24461efb049eb1ae6b3eae7015728 Mon Sep 17 00:00:00 2001
 From: ServerOmega <69215510+ServerOmega@users.noreply.github.com>
 Date: Fri, 13 Nov 2026 19:17:13 -0800
-Subject: [PATCH 11/12] ONLINE_MATCHMAKING.md: online tag / partner recruit
+Subject: [PATCH 11/14] ONLINE_MATCHMAKING.md: online tag / partner recruit
  (pair worlds, LoadCard tag_teams, WebUI invite, OnlineTag config)
 
 ---
@@ -4219,7 +4219,7 @@ index 65ee897..81e88cd 100644
 From bb1f1c02bf7ac969890bdb686027ca10f450e7c8 Mon Sep 17 00:00:00 2001
 From: ServerOmega <69215510+ServerOmega@users.noreply.github.com>
 Date: Sat, 14 Nov 2026 02:52:18 -0800
-Subject: [PATCH 12/12] Results-hang fixes (experimental): HumansTeamVsCpu
+Subject: [PATCH 12/14] Results-hang fixes (experimental): HumansTeamVsCpu
  rooms, PostMatchStubs for 205/211/225/306/406/407, NETREPORT log of
  SaveVsmOnResult.network_report
 
@@ -4740,6 +4740,1141 @@ index 0000000..a4934f4
 +        var ids = room.Clients.Select(c => c.Client.NodeId).ToList();
 +        Assert.Equal(ids.Count, ids.Distinct().Count());
 +        Assert.DoesNotContain(room.Clients, c => c.Client.NodeId == 2001 && !Matchmaker.Unit.IsHuman(c.Client));
++    }
++}
+-- 
+2.47.3
+
+
+From 581a1ce4c65e127e280234709143633cc1c9b7ee Mon Sep 17 00:00:00 2001
+From: ServerOmega <69215510+ServerOmega@users.noreply.github.com>
+Date: Sat, 14 Nov 2026 05:07:10 -0800
+Subject: [PATCH 13/14] Results-hang simulation drafts: PostMatchWatchdogMs
+ (off), MaskCardSecretsInLog (on, logging only), configurable LoadBlackList
+ (upstream defaults), HangSim + HumansVsCpu many-cabinet sim tests
+
+---
+ ONLINE_MATCHMAKING.md                         |   9 +
+ Server-Infinite/Configurations/server.json    |   9 +
+ Server-Infinite/Controllers/GameController.cs |  38 ++++-
+ .../Game/LoadBlackListQueryHandler.cs         |  22 ++-
+ Server-Infinite/Lobbies/LogMask.cs            |  27 +++
+ Server-Infinite/Lobbies/PostMatchWatchdog.cs  |  63 +++++++
+ .../Lobbies/Serilog/CardSecretMaskEnricher.cs |  22 +++
+ .../Models/Config/CardServerConfig.cs         |  26 ++-
+ Server-Infinite/Program.cs                    |   3 +
+ Tests/Matchmaking.Tests/HangSimTests.cs       |  95 +++++++++++
+ .../Matchmaking.Tests/HumansVsCpuSimTests.cs  | 154 ++++++++++++++++++
+ .../Matchmaking.Tests.csproj                  |   2 +
+ 12 files changed, 459 insertions(+), 11 deletions(-)
+ create mode 100644 Server-Infinite/Lobbies/LogMask.cs
+ create mode 100644 Server-Infinite/Lobbies/PostMatchWatchdog.cs
+ create mode 100644 Server-Infinite/Lobbies/Serilog/CardSecretMaskEnricher.cs
+ create mode 100644 Tests/Matchmaking.Tests/HangSimTests.cs
+ create mode 100644 Tests/Matchmaking.Tests/HumansVsCpuSimTests.cs
+
+diff --git a/ONLINE_MATCHMAKING.md b/ONLINE_MATCHMAKING.md
+index 010be9c..f4a2bfe 100644
+--- a/ONLINE_MATCHMAKING.md
++++ b/ONLINE_MATCHMAKING.md
+@@ -178,6 +178,15 @@ exvs2-lobbies `server-sketch/loadtest/hangfix_e2e.py`.
+   (reject) + `http://dummy`, so the LM skips its replay upload. Nothing is stored; log lines start with `STUB`.
+ * `LogNetworkReport` (true): one `NETREPORT` line per SaveVsmOnResult: input / start delay frames, delay source, pause
+   count/frames, and per cabinet `serial@loc:rtt,max,loss`. No card data.
++* `PostMatchWatchdogMs` (0 = off; 500-9000): post-match saves (200/201/203/204/207/220/221/223/224) that are not done
++  by then get an immediate Success with an empty body (SaveResultCapture: no upload URL), so a slow database (e.g. the
++  SQLite file locked by another program) can't hold the game's save task for 5 x 10 s per call. The handler keeps
++  running in its own scope and still saves; log lines start with `WATCHDOG`. Experimental.
++* `MaskCardSecretsInLog` (true): the "Request is" dump and log properties named ChipId / AccessCode / SessionId /
++  Token show `<masked:N>` instead of the value. Logging only.
++* `LoadBlackList` (300 / 1 / 300 / 300 / 5 = upstream's fixed values): the LoadBlackList reply. `ThresholdDelayedRtt`
++  (ms) is the RTT above which hole punching fails with "RTT out of limit"; `ThresholdDelayedFrame` the input-delay
++  frames above which a match counts as delayed. Same values on every server of a group.
+ 
+ ## Known gaps / risks
+ * CheckMatching / CancelMatching are not authenticated: anyone who knows a node id can cancel that entry.
+diff --git a/Server-Infinite/Configurations/server.json b/Server-Infinite/Configurations/server.json
+index aeb6891..5f58b1b 100644
+--- a/Server-Infinite/Configurations/server.json
++++ b/Server-Infinite/Configurations/server.json
+@@ -5,6 +5,15 @@
+     "MaxReplaySaveSlotPerPlayer": 5,
+     "PostMatchStubs": false,
+     "LogNetworkReport": true,
++    "PostMatchWatchdogMs": 0,
++    "MaskCardSecretsInLog": true,
++    "LoadBlackList": {
++      "ThresholdDelayedRtt": 300,
++      "MaxBlacklistNum": 1,
++      "DelayRestrictCondition": 300,
++      "DelayPermitCondition": 300,
++      "ThresholdDelayedFrame": 5
++    },
+     "GameConfigurations": {
+       "TrainingMinutes": 12,
+       "FesConfigurations": {
+diff --git a/Server-Infinite/Controllers/GameController.cs b/Server-Infinite/Controllers/GameController.cs
+index e3c29fa..9af353c 100644
+--- a/Server-Infinite/Controllers/GameController.cs
++++ b/Server-Infinite/Controllers/GameController.cs
+@@ -17,13 +17,15 @@ public class GameController : BaseController<GameController>
+     private readonly IMediator mediator;
+     private readonly ServerDbContext context;
+     private readonly ServerInfinite.Models.Config.CardServerConfig config;
++    private readonly IServiceScopeFactory scopeFactory;
+     
+     public GameController(IMediator mediator, ServerDbContext context,
+-        IOptions<ServerInfinite.Models.Config.CardServerConfig> options)
++        IOptions<ServerInfinite.Models.Config.CardServerConfig> options, IServiceScopeFactory scopeFactory)
+     {
+         this.mediator = mediator;
+         this.context = context;
+         this.config = options.Value;
++        this.scopeFactory = scopeFactory;
+     }
+     
+     [Route("")]
+@@ -31,10 +33,38 @@ public class GameController : BaseController<GameController>
+     [Produces("application/protobuf")]
+     public async Task<IActionResult> Game([FromBody] Request request)
+     {
+-        Logger.LogInformation("Request is {Request}", request.Stringify());
++        // exvs2-lobbies: MaskCardSecretsInLog (default true) hides card codes in this upstream dump
++        Logger.LogInformation("Request is {Request}",
++            config.MaskCardSecretsInLog ? ServerInfinite.Lobbies.LogMask.Mask(request.Stringify()) : request.Stringify());
+         
+         var baseAddress = Request.Host.ToString();
+-        
++
++        // exvs2-lobbies results-hang draft: PostMatchWatchdogMs (default 0 = off). The handler runs in its own DI scope so
++        // it can finish (and save) after the early reply.
++        if (ServerInfinite.Lobbies.PostMatchWatchdog.Applies(config.PostMatchWatchdogMs, request.Type))
++        {
++            var started = DateTime.UtcNow;
++            var (reply, timedOut) = await ServerInfinite.Lobbies.PostMatchWatchdog.RunAsync(request, config.PostMatchWatchdogMs,
++                async () =>
++                {
++                    using var scope = scopeFactory.CreateScope();
++                    var scoped = scope.ServiceProvider.GetRequiredService<IMediator>();
++                    return await Dispatch(scoped, request, baseAddress);
++                },
++                late => Logger.LogWarning("WATCHDOG {Type} finished {Ms:0} ms after the request ({Outcome})", request.Type,
++                    (DateTime.UtcNow - started).TotalMilliseconds,
++                    late.IsCompletedSuccessfully ? "saved, " + late.Result.Error : "failed: " + late.Exception?.GetBaseException().Message));
++            if (timedOut)
++                Logger.LogWarning("WATCHDOG {Type} not finished after {Ms} ms: replied Success early (empty body)", request.Type,
++                    ServerInfinite.Lobbies.PostMatchWatchdog.Clamp(config.PostMatchWatchdogMs));
++            return Ok(reply);
++        }
++
++        return Ok(await Dispatch(mediator, request, baseAddress));
++    }
++
++    private async Task<Response> Dispatch(IMediator mediator, Request request, string baseAddress)
++    {
+         var response = request.Type switch
+         {
+             MethodType.MthdRegisterPcb => await mediator.Send(new RegisterPcbCommand(request, baseAddress)),
+@@ -83,7 +113,7 @@ public class GameController : BaseController<GameController>
+             _ => UnhandledResponse(request)
+         };
+ 
+-        return Ok(response);
++        return response;
+     }
+     
+     private Response UnhandledResponse(Request request)
+diff --git a/Server-Infinite/Handlers/Game/LoadBlackListQueryHandler.cs b/Server-Infinite/Handlers/Game/LoadBlackListQueryHandler.cs
+index 226d496..1b9593f 100644
+--- a/Server-Infinite/Handlers/Game/LoadBlackListQueryHandler.cs
++++ b/Server-Infinite/Handlers/Game/LoadBlackListQueryHandler.cs
+@@ -1,5 +1,7 @@
+ using MediatR;
++using Microsoft.Extensions.Options;
+ using nue.protocol.exvs;
++using ServerInfinite.Models.Config;
+ 
+ namespace ServerInfinite.Handlers.Game;
+ 
+@@ -7,6 +9,14 @@ public record LoadBlackListQuery(Request Request) : IRequest<Response>;
+ 
+ public class LoadBlackListQueryHandler : IRequestHandler<LoadBlackListQuery, Response>
+ {
++    // exvs2-lobbies: values come from CardServerConfig.LoadBlackList (defaults = upstream's fixed 300/1/300/300/5)
++    private readonly LoadBlackListConfigurations _cfg;
++
++    public LoadBlackListQueryHandler(IOptions<CardServerConfig> options)
++    {
++        _cfg = options.Value.LoadBlackList ?? new LoadBlackListConfigurations();
++    }
++
+     public Task<Response> Handle(LoadBlackListQuery request, CancellationToken cancellationToken)
+     {
+         return Task.FromResult(new Response
+@@ -16,12 +26,12 @@ public class LoadBlackListQueryHandler : IRequestHandler<LoadBlackListQuery, Res
+             Error = Error.Success,
+             load_black_list = new Response.LoadBlackList
+             {
+-                ThresholdDelayedRtt = 300,
+-                DelayPermitCondition = 300,
+-                DelayRestrictCondition = 300,
+-                MaxBlacklistNum = 1,
+-                ThresholdDelayedFrame = 5
++                ThresholdDelayedRtt = _cfg.ThresholdDelayedRtt,
++                DelayPermitCondition = _cfg.DelayPermitCondition,
++                DelayRestrictCondition = _cfg.DelayRestrictCondition,
++                MaxBlacklistNum = _cfg.MaxBlacklistNum,
++                ThresholdDelayedFrame = _cfg.ThresholdDelayedFrame
+             }
+         });
+     }
+-}
+\ No newline at end of file
++}
+diff --git a/Server-Infinite/Lobbies/LogMask.cs b/Server-Infinite/Lobbies/LogMask.cs
+new file mode 100644
+index 0000000..b830ffd
+--- /dev/null
++++ b/Server-Infinite/Lobbies/LogMask.cs
+@@ -0,0 +1,27 @@
++using System.Text.RegularExpressions;
++
++namespace ServerInfinite.Lobbies;
++
++/// <summary>
++/// exvs2-lobbies: masks card secrets in upstream's full request dump ("Request is (Stringified) ..."), which otherwise
++/// logs AccessCode / ChipId / SessionId / Token values in clear text. CardServerConfig.MaskCardSecretsInLog (default
++/// true, logging only). Values become "&lt;masked:N&gt;" (N = length), so a log can be shared without card data.
++/// </summary>
++public static class LogMask
++{
++    private static readonly Regex Field = new(
++        @"(?m)^(\s*(?:AccessCode|ChipId|SessionId|Token|BootToken|UploadToken|access_code|chip_id|session_id|boot_token)\s*:[ \t]*)(\S[^\r\n]*)$",
++        RegexOptions.Compiled);
++
++    private static readonly Regex Inline = new(
++        @"(?i)\b(access_?code|chip_?id|session_?id|boot_?token)(\s*[=:]\s*)([0-9A-Za-z_\-]{4,})", RegexOptions.Compiled);
++
++    public static string Mask(string? text)
++    {
++        if (string.IsNullOrEmpty(text)) return text ?? "";
++        var s = Field.Replace(text, m => m.Groups[1].Value + Masked(m.Groups[2].Value.TrimEnd()));
++        return Inline.Replace(s, m => m.Groups[1].Value + m.Groups[2].Value + Masked(m.Groups[3].Value));
++    }
++
++    private static string Masked(string v) => v.StartsWith("<masked:") || v == "(null)" ? v : $"<masked:{v.Length}>";
++}
+diff --git a/Server-Infinite/Lobbies/PostMatchWatchdog.cs b/Server-Infinite/Lobbies/PostMatchWatchdog.cs
+new file mode 100644
+index 0000000..60383d5
+--- /dev/null
++++ b/Server-Infinite/Lobbies/PostMatchWatchdog.cs
+@@ -0,0 +1,63 @@
++using nue.protocol.exvs;
++
++namespace ServerInfinite.Lobbies;
++
++/// <summary>
++/// exvs2-lobbies, results-hang simulation draft (analysis/results-hang-sim.md section 5, EXPERIMENTAL, off by default:
++/// CardServerConfig.PostMatchWatchdogMs = 0). The game's post-match save task (S) waits up to 10 s per HTTP call
++/// (libcurl timeout) and repeats a failed call up to 5 times. If a save handler is slow (e.g. the SQLite file is locked
++/// by another process: Microsoft.Data.Sqlite waits up to 30 s on a busy database), every try times out and S can stay
++/// busy for about 5 x 10 s per call. With the watchdog on, a post-match save that is not finished after the deadline
++/// gets an immediate Success with an empty body (the same reply upstream sends for an unknown card), so the game moves on.
++/// The handler keeps running in its own DI scope and still writes its result when the database is free again.
++/// </summary>
++public static class PostMatchWatchdog
++{
++    /// <summary>Post-match saves whose response bodies are empty / all-optional in the game's proto.</summary>
++    public static readonly HashSet<MethodType> Methods = new()
++    {
++        MethodType.MthdSaveVsmResult, MethodType.MthdSaveVsmOnResult, MethodType.MthdSaveVscResult,
++        MethodType.MthdSaveVstResult, MethodType.MthdSaveStageResult, MethodType.MthdSaveBattleLog,
++        MethodType.MthdSaveBattleLogOn, MethodType.MthdSaveUserPlayResearchData, MethodType.MthdSaveResultCapture,
++    };
++
++    /// <summary>Allowed range for the deadline (it must stay below the game's 10 s HTTP timeout).</summary>
++    public static int Clamp(int ms) => ms <= 0 ? 0 : Math.Clamp(ms, 500, 9000);
++
++    public static bool Applies(int ms, MethodType type) => Clamp(ms) > 0 && Methods.Contains(type);
++
++    /// <summary>Success + the empty typed body for a method in <see cref="Methods"/> (SaveResultCapture: no upload URL).</summary>
++    public static Response TimeoutReply(Request q)
++    {
++        var r = new Response { Type = q.Type, RequestId = q.RequestId, Error = Error.Success };
++        switch (q.Type)
++        {
++            case MethodType.MthdSaveVsmResult: r.save_vsm_result = new Response.SaveVsmResult(); break;
++            case MethodType.MthdSaveVsmOnResult: r.save_vsm_on_result = new Response.SaveVsmOnResult(); break;
++            case MethodType.MthdSaveVscResult: r.save_vsc_result = new Response.SaveVscResult(); break;
++            case MethodType.MthdSaveVstResult: r.save_vst_result = new Response.SaveVstResult(); break;
++            case MethodType.MthdSaveStageResult: r.save_stage_result = new Response.SaveStageResult(); break;
++            case MethodType.MthdSaveBattleLog: r.save_battle_log = new Response.SaveBattleLog(); break;
++            case MethodType.MthdSaveBattleLogOn: r.save_battle_log_on = new Response.SaveBattleLogOn(); break;
++            case MethodType.MthdSaveUserPlayResearchData: r.save_user_play_research_data = new Response.SaveUserPlayResearchData(); break;
++            case MethodType.MthdSaveResultCapture: r.save_result_capture = new Response.SaveResultCapture(); break;
++            default: r.Error = Error.ErrServer; r.ErrorMsg = "Unhandled case"; break;
++        }
++        return r;
++    }
++
++    /// <summary>
++    /// Runs <paramref name="work"/> on the thread pool (upstream handlers block synchronously on the database) and waits
++    /// at most <paramref name="ms"/>. Returns (response, false) when it finished in time, otherwise
++    /// (TimeoutReply, true) and lets the work finish in the background; <paramref name="onLate"/> sees its outcome.
++    /// </summary>
++    public static async Task<(Response Response, bool TimedOut)> RunAsync(Request q, int ms, Func<Task<Response>> work,
++        Action<Task<Response>>? onLate = null)
++    {
++        var task = Task.Run(work);
++        var done = await Task.WhenAny(task, Task.Delay(Clamp(ms))).ConfigureAwait(false);
++        if (done == task) return (await task.ConfigureAwait(false), false);
++        if (onLate != null) _ = task.ContinueWith(onLate, TaskScheduler.Default);
++        return (TimeoutReply(q), true);
++    }
++}
+diff --git a/Server-Infinite/Lobbies/Serilog/CardSecretMaskEnricher.cs b/Server-Infinite/Lobbies/Serilog/CardSecretMaskEnricher.cs
+new file mode 100644
+index 0000000..ba4c1a9
+--- /dev/null
++++ b/Server-Infinite/Lobbies/Serilog/CardSecretMaskEnricher.cs
+@@ -0,0 +1,22 @@
++using Serilog.Core;
++using Serilog.Events;
++
++namespace ServerInfinite.Lobbies.Serilog;
++
++/// <summary>
++/// exvs2-lobbies: with CardServerConfig.MaskCardSecretsInLog (default true), replaces the value of structured log
++/// properties that carry card data (e.g. upstream's "Card not exist for ChipId = {ChipId}") with "&lt;masked:N&gt;".
++/// Logging only; the request dump itself is masked by <see cref="LogMask"/>.
++/// </summary>
++public sealed class CardSecretMaskEnricher : ILogEventEnricher
++{
++    private static readonly string[] Names = { "ChipId", "AccessCode", "SessionId", "Token", "BootToken", "UploadToken" };
++
++    public void Enrich(LogEvent logEvent, ILogEventPropertyFactory propertyFactory)
++    {
++        foreach (var name in Names)
++            if (logEvent.Properties.TryGetValue(name, out var v) && v is ScalarValue { Value: string s } && s.Length > 0
++                && !s.StartsWith("<masked:"))
++                logEvent.AddOrUpdateProperty(new LogEventProperty(name, new ScalarValue($"<masked:{s.Length}>")));
++    }
++}
+diff --git a/Server-Infinite/Models/Config/CardServerConfig.cs b/Server-Infinite/Models/Config/CardServerConfig.cs
+index e7a5e31..9ebd1a3 100644
+--- a/Server-Infinite/Models/Config/CardServerConfig.cs
++++ b/Server-Infinite/Models/Config/CardServerConfig.cs
+@@ -23,6 +23,18 @@ public class CardServerConfig
+     /// line per report. Logging only.</summary>
+     public bool LogNetworkReport { get; set; } = true;
+ 
++    /// <summary>exvs2-lobbies results-hang draft (analysis/results-hang-sim.md section 5, EXPERIMENTAL, 0 = off):
++    /// deadline in ms (500-9000) for post-match saves (200/201/203/204/207/220/221/223/224). A save not finished in time
++    /// gets an immediate Success with an empty body; the handler still finishes in the background.</summary>
++    public int PostMatchWatchdogMs { get; set; } = 0;
++
++    /// <summary>exvs2-lobbies: mask AccessCode / ChipId / SessionId / Token values in the "Request is" dump. Logging only.</summary>
++    public bool MaskCardSecretsInLog { get; set; } = true;
++
++    /// <summary>exvs2-lobbies: values of the LoadBlackList reply (the game's online-match quality limits). Defaults are
++    /// upstream's fixed values, so nothing changes unless they are edited.</summary>
++    public LoadBlackListConfigurations LoadBlackList { get; set; } = new();
++
+     // exvs2-lobbies: online tag / partner invites (experimental)
+     public OnlineTagConfigurations OnlineTag { get; set; } = new();
+ 
+@@ -35,4 +47,16 @@ public class CardServerConfig
+         var jsonString = JsonSerializer.Serialize(this, options);
+         return jsonString;
+     }
+-}
+\ No newline at end of file
++}
++
++/// <summary>exvs2-lobbies: LoadBlackList reply values (upstream defaults). RTT in ms, delay in frames.</summary>
++public class LoadBlackListConfigurations
++{
++    /// <summary>Peers above this RTT fail hole punching with "RTT out of limit" (UDPHP_FAIL_RTT_OUT_OF_LIMIT).</summary>
++    public uint ThresholdDelayedRtt { get; set; } = 300;
++    public uint MaxBlacklistNum { get; set; } = 1;
++    public uint DelayRestrictCondition { get; set; } = 300;
++    public uint DelayPermitCondition { get; set; } = 300;
++    /// <summary>Input-delay frames above which a match counts as delayed.</summary>
++    public uint ThresholdDelayedFrame { get; set; } = 5;
++}
+diff --git a/Server-Infinite/Program.cs b/Server-Infinite/Program.cs
+index 32c020a..5db8b9b 100644
+--- a/Server-Infinite/Program.cs
++++ b/Server-Infinite/Program.cs
+@@ -51,6 +51,9 @@ try
+     builder.Host.UseSerilog((context, configuration) =>
+     {
+         configuration.WriteTo.Console().ReadFrom.Configuration(context.Configuration);
++        // exvs2-lobbies: MaskCardSecretsInLog (default true) masks ChipId / AccessCode / SessionId log properties
++        if (context.Configuration.GetValue<bool?>("CardServerConfig:MaskCardSecretsInLog") ?? true)
++            configuration.Enrich.With(new ServerInfinite.Lobbies.Serilog.CardSecretMaskEnricher());
+     });
+ 
+     builder.Services.AddMediatR(cfg => {
+diff --git a/Tests/Matchmaking.Tests/HangSimTests.cs b/Tests/Matchmaking.Tests/HangSimTests.cs
+new file mode 100644
+index 0000000..7a84fed
+--- /dev/null
++++ b/Tests/Matchmaking.Tests/HangSimTests.cs
+@@ -0,0 +1,95 @@
++using nue.protocol.exvs;
++using ServerInfinite.Lobbies;
++using Xunit;
++
++namespace Matchmaking.Tests;
++
++// results-hang simulation drafts (analysis/results-hang-sim.md section 5): PostMatchWatchdog + LogMask. No server, no DB.
++public class HangSimTests
++{
++    private static Request Q(MethodType t) => new() { Type = t, RequestId = "r1", PcbSerial = "P", LocId = "L", Token = "" };
++
++    [Fact]
++    public void WatchdogOffByDefaultAndClamped()
++    {
++        Assert.False(PostMatchWatchdog.Applies(0, MethodType.MthdSaveVsmOnResult));
++        Assert.Equal(0, PostMatchWatchdog.Clamp(-5));
++        Assert.Equal(500, PostMatchWatchdog.Clamp(1));
++        Assert.Equal(9000, PostMatchWatchdog.Clamp(60000));   // always below the game's 10 s HTTP timeout
++        Assert.True(PostMatchWatchdog.Applies(8000, MethodType.MthdSaveVsmOnResult));
++        Assert.False(PostMatchWatchdog.Applies(8000, MethodType.MthdLoadCard));   // never on loads / card reads
++        Assert.False(PostMatchWatchdog.Applies(8000, MethodType.MthdPreLoadCard));
++    }
++
++    [Theory]
++    [InlineData(MethodType.MthdSaveVsmResult)]
++    [InlineData(MethodType.MthdSaveVsmOnResult)]
++    [InlineData(MethodType.MthdSaveVscResult)]
++    [InlineData(MethodType.MthdSaveVstResult)]
++    [InlineData(MethodType.MthdSaveStageResult)]
++    [InlineData(MethodType.MthdSaveBattleLog)]
++    [InlineData(MethodType.MthdSaveBattleLogOn)]
++    [InlineData(MethodType.MthdSaveUserPlayResearchData)]
++    [InlineData(MethodType.MthdSaveResultCapture)]
++    public void TimeoutReplyIsSuccessWithTypedBodyAndRoundTrips(MethodType t)
++    {
++        var r = PostMatchWatchdog.TimeoutReply(Q(t));
++        Assert.Equal(Error.Success, r.Error);
++        Assert.Equal(t, r.Type);
++        Assert.Equal("r1", r.RequestId);
++        using var ms = new MemoryStream();
++        ProtoBuf.Serializer.Serialize(ms, r);
++        ms.Position = 0;
++        var back = ProtoBuf.Serializer.Deserialize<Response>(ms);
++        Assert.Equal(Error.Success, back.Error);
++        if (t == MethodType.MthdSaveResultCapture) Assert.Empty(back.save_result_capture.Urls);   // no upload URL
++    }
++
++    [Fact]
++    public async Task FastHandlerIsReturnedAsIs()
++    {
++        var q = Q(MethodType.MthdSaveVsmOnResult);
++        var (r, late) = await PostMatchWatchdog.RunAsync(q, 2000,
++            () => Task.FromResult(new Response { Type = q.Type, RequestId = q.RequestId, Error = Error.ErrServer, ErrorMsg = "x" }));
++        Assert.False(late);
++        Assert.Equal("x", r.ErrorMsg);
++    }
++
++    [Fact]
++    public async Task SlowBlockingHandlerGetsEarlySuccessAndStillFinishes()
++    {
++        var q = Q(MethodType.MthdSaveVsmOnResult);
++        var finished = new TaskCompletionSource<bool>();
++        var sw = System.Diagnostics.Stopwatch.StartNew();
++        var (r, late) = await PostMatchWatchdog.RunAsync(q, 500, () =>
++        {
++            Thread.Sleep(1500);   // upstream handlers block synchronously (SQLite busy wait)
++            return Task.FromResult(new Response { Type = q.Type, Error = Error.Success });
++        }, t => finished.TrySetResult(t.IsCompletedSuccessfully));
++        Assert.True(late);
++        Assert.Equal(Error.Success, r.Error);
++        Assert.NotNull(r.save_vsm_on_result);
++        Assert.InRange(sw.ElapsedMilliseconds, 400, 1400);
++        Assert.True(await finished.Task.WaitAsync(TimeSpan.FromSeconds(5)));   // background save completed
++    }
++
++    [Fact]
++    public void LogMaskHidesCardValuesOnly()
++    {
++        const string dump = "Request is (Stringified)   : $id = 1\n  Type            : 100\n  PcbSerial       : TAGPCB0001\n" +
++                            "  Token           : \n  pre_load_card   : $id = 2\n    IsCard          : True\n" +
++                            "    AccessCode      : FAKE2586900000001\n    ChipId          : FAKECHIP58690001\n" +
++                            "    SessionId       : abcdef0123456789\n  load_card       : (null)\n";
++        var m = LogMask.Mask(dump);
++        Assert.DoesNotContain("FAKE2586900000001", m);
++        Assert.DoesNotContain("FAKECHIP58690001", m);
++        Assert.DoesNotContain("abcdef0123456789", m);
++        Assert.Contains("AccessCode      : <masked:17>", m);
++        Assert.Contains("PcbSerial       : TAGPCB0001", m);   // non-secret fields unchanged
++        Assert.Contains("load_card       : (null)", m);
++        Assert.Contains("Token           : \n", m);
++        Assert.Equal("Card not exist for ChipId = <masked:16>, Now creating...",
++            LogMask.Mask("Card not exist for ChipId = FAKECHIP58690001, Now creating..."));
++        Assert.Equal(m, LogMask.Mask(m));   // idempotent
++    }
++}
+diff --git a/Tests/Matchmaking.Tests/HumansVsCpuSimTests.cs b/Tests/Matchmaking.Tests/HumansVsCpuSimTests.cs
+new file mode 100644
+index 0000000..9942148
+--- /dev/null
++++ b/Tests/Matchmaking.Tests/HumansVsCpuSimTests.cs
+@@ -0,0 +1,154 @@
++using nue.protocol.mms;
++using ServerInfinite.Matchmaking;
++using Xunit;
++using Xunit.Abstractions;
++
++namespace Matchmaking.Tests;
++
++// results-hang simulation (analysis/results-hang-sim.md section 4): many fake cabinets (solo / 2-human team /
++// cabinet with its own CPU partner, two modes, random arrival) polled once a second, HumansVsCpu off vs on, same seed.
++// Checks room invariants and that the flag only changes rooms that would otherwise be short-handed with two humans.
++public class HumansVsCpuSimTests
++{
++    private readonly ITestOutputHelper _out;
++    public HumansVsCpuSimTests(ITestOutputHelper output) => _out = output;
++
++    private static Client Cl(uint node, bool human = true)
++    {
++        var c = new Client
++        {
++            NodeId = node, PcbSerial = human ? $"P{node}" : Matchmaker.NpcSerial, LocId = $"L{node}", PrefCode = 13,
++            GlobalIpaddress = "203.0.113.1", NatMappingType = NatMappingType.NmEndpointIndependent,
++            NatFilteringType = NatFilteringType.NfEndpointIndependent
++        };
++        c.Properties.Add(new Client.Property { PropertyId = 0, PropertyValue = human ? "Y" : "N" });
++        return c;
++    }
++
++    private enum Kind { Solo, Team, CpuPartner }
++    private sealed record Cab(uint Node, Kind Kind, uint World, double Arrive, uint Partner);
++
++    private static Request.EntryMatching Entry(Cab c)
++    {
++        var e = new Request.EntryMatching
++        {
++            ApplyId = 1, Myclient = Cl(c.Node), MatchingTimeout = 150,
++            Myplayer = new Player { BanapassportAmId = c.Node },
++            World = new World { MuchaGameId = "GIB1", Version = 1, WorldId = c.World }
++        };
++        e.Myplayer.Parameters.Add(new Player.Parameter { AttributeId = 1, parameter = 0 });
++        if (c.Kind != Kind.Solo)
++            e.Groups.Add(new Request.EntryMatching.Group
++            {
++                Client = Cl(c.Partner, c.Kind == Kind.Team),
++                Player = new Player { BanapassportAmId = c.Kind == Kind.Team ? c.Partner : 0 }
++            });
++        return e;
++    }
++
++    private static List<Cab> Population(int seed, int n)
++    {
++        var rnd = new Random(seed);
++        var cabs = new List<Cab>();
++        for (int i = 0; i < n; i++)
++        {
++            uint node = 20000u + 8u * (uint)i;                  // ids: node, node+1 (2nd id), partner node+4, node+5
++            double p = rnd.NextDouble();
++            var kind = p < 0.55 ? Kind.Solo : p < 0.8 ? Kind.Team : Kind.CpuPartner;
++            uint partner = kind == Kind.Team ? node + 4 : kind == Kind.CpuPartner ? node + 1 : 0;
++            cabs.Add(new Cab(node, kind, rnd.NextDouble() < 0.7 ? 23u : 21u, Math.Round(rnd.NextDouble() * 240), partner));
++        }
++        return cabs;
++    }
++
++    private sealed record Outcome(List<Matchmaker.Room> Rooms, Dictionary<uint, Matchmaker.Room> ByNode, int Unmatched);
++
++    private static Outcome Run(List<Cab> cabs, bool flag)
++    {
++        var mm = new Matchmaker(fillAfter: 30, allowPartial: true, softWait: 15, seed: 7)
++        { StaleAfter = 1e6, HumansVsCpu = flag, Realms = null };
++        foreach (var c in cabs)
++        {
++            mm.RegisterIssued(new[] { c.Node, c.Node + 1 });
++            if (c.Kind == Kind.Team) mm.RegisterIssued(new[] { c.Partner, c.Partner + 1 });
++        }
++        var rooms = new List<Matchmaker.Room>();
++        var byNode = new Dictionary<uint, Matchmaker.Room>();
++        var waiting = new HashSet<Cab>();
++        for (double t = 0; t <= 450; t += 1)
++        {
++            foreach (var c in cabs.Where(c => c.Arrive == t)) { mm.Entry(Entry(c), t); waiting.Add(c); }
++            foreach (var c in waiting.ToList())
++            {
++                var (code, room, _) = mm.Check(c.Node, t);
++                if (room != null)
++                {
++                    if (!rooms.Contains(room)) rooms.Add(room);
++                    Assert.False(byNode.ContainsKey(c.Node) && !ReferenceEquals(byNode[c.Node], room), "cabinet in two rooms");
++                    byNode[c.Node] = room; waiting.Remove(c);
++                    if (c.Kind == Kind.Team) byNode[c.Partner] = room;
++                }
++                else if (code == ErrorCode.MatchCanceled) waiting.Remove(c);
++            }
++        }
++        return new Outcome(rooms, byNode, cabs.Count(c => !byNode.ContainsKey(c.Node)));
++    }
++
++    private static bool IsHumansVsCpu(Matchmaker.Room r) =>
++        r.Clients.Count == 4 && r.Clients.Count(c => c.GroupId == 0) == 2
++        && r.Clients.Where(c => c.GroupId == 0).All(c => Matchmaker.Unit.IsHuman(c.Client))
++        && r.Clients.Where(c => c.GroupId == 1).All(c => !Matchmaker.Unit.IsHuman(c.Client));
++
++    private static void Invariants(Outcome o, List<Cab> cabs, bool flag)
++    {
++        var seen = new HashSet<uint>();
++        foreach (var r in o.Rooms)
++        {
++            Assert.InRange(r.Clients.Count, 2, 4);
++            Assert.All(r.Clients, c => Assert.InRange(c.GroupId, 0u, 1u));
++            Assert.True(r.Clients.Count(c => c.GroupId == 0) <= 2 && r.Clients.Count(c => c.GroupId == 1) <= 2);
++            var ids = r.Clients.Select(c => c.Client.NodeId).ToList();
++            Assert.Equal(ids.Count, ids.Distinct().Count());                          // no id twice in a room
++            foreach (var h in r.Clients.Where(c => Matchmaker.Unit.IsHuman(c.Client)))
++                Assert.True(seen.Add(h.Client.NodeId), $"human {h.Client.NodeId} in two rooms");
++            var worlds = cabs.Where(c => ids.Contains(c.Node)).Select(c => c.World).Distinct().ToList();
++            Assert.Single(worlds);                                                    // never mixes modes
++            if (IsHumansVsCpu(r))
++            {
++                Assert.True(flag, "humans-vs-cpu room with the flag off");
++                var humans = r.Clients.Where(c => c.GroupId == 0).Select(c => c.Client.NodeId).ToHashSet();
++                Assert.All(r.Clients.Where(c => c.GroupId == 1), c =>
++                {
++                    Assert.Equal(Matchmaker.NpcSerial, c.Client.PcbSerial);
++                    Assert.Contains(c.Client.NodeId - 1, humans);                     // stand-in on its human's 2nd id
++                });
++                // never built from a cabinet that brought its own CPU partner
++                Assert.DoesNotContain(cabs, c => c.Kind == Kind.CpuPartner && humans.Contains(c.Node));
++            }
++        }
++    }
++
++    [Theory]
++    [InlineData(1)] [InlineData(2)] [InlineData(3)] [InlineData(4)] [InlineData(5)]
++    [InlineData(6)] [InlineData(7)] [InlineData(8)] [InlineData(9)] [InlineData(10)]
++    public void ManyCabinetsOffVsOn(int seed)
++    {
++        foreach (int n in new[] { 6, 24, 120 })
++        {
++            var cabs = Population(seed * 1000 + n, n);
++            var off = Run(cabs, false);
++            var on = Run(cabs, true);
++            Invariants(off, cabs, false);
++            Invariants(on, cabs, true);
++            int hvc = on.Rooms.Count(IsHumansVsCpu);
++            int humansOff = off.Rooms.Sum(r => r.Humans), humansOn = on.Rooms.Sum(r => r.Humans);
++            _out.WriteLine($"seed {seed} n={n,3}: off rooms={off.Rooms.Count,3} humans matched={humansOff,3} unmatched cabs={off.Unmatched,3} | " +
++                           $"on rooms={on.Rooms.Count,3} humans matched={humansOn,3} unmatched cabs={on.Unmatched,3} humans-vs-cpu={hvc}");
++            // the flag can only add matches (lone 2-human teams) or turn short 1v1s into teammates; it never strands more
++            Assert.True(on.Unmatched <= off.Unmatched, $"flag on left more cabinets unmatched ({on.Unmatched} > {off.Unmatched})");
++            // full rooms of 4 humans are as frequent with the flag (+-1 from changed timing)
++            int full(Outcome o) => o.Rooms.Count(r => r.Clients.Count == 4 && r.Clients.All(c => Matchmaker.Unit.IsHuman(c.Client)));
++            Assert.InRange(full(on), full(off) - 1, full(off) + 1);
++        }
++    }
++}
+diff --git a/Tests/Matchmaking.Tests/Matchmaking.Tests.csproj b/Tests/Matchmaking.Tests/Matchmaking.Tests.csproj
+index b5b7cbb..74e757b 100644
+--- a/Tests/Matchmaking.Tests/Matchmaking.Tests.csproj
++++ b/Tests/Matchmaking.Tests/Matchmaking.Tests.csproj
+@@ -9,6 +9,8 @@
+   <ItemGroup>
+     <Compile Include="..\..\Server-Infinite\Matchmaking\*.cs" Exclude="..\..\Server-Infinite\Matchmaking\BuiltinStunServer.cs" Link="Matchmaking\%(Filename)%(Extension)" />
+     <Compile Include="..\..\Server-Infinite\Proto\Match.cs" Link="Proto\Match.cs" />
++    <Compile Include="..\..\Server-Infinite\Proto\Game.cs" Link="Proto\Game.cs" />
++    <Compile Include="..\..\Server-Infinite\Lobbies\*.cs" Link="Lobbies\%(Filename)%(Extension)" />
+   </ItemGroup>
+   <ItemGroup>
+     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
+-- 
+2.47.3
+
+
+From 79b9fb419883b19d6a806e5b0bd07ca083e36acc Mon Sep 17 00:00:00 2001
+From: ServerOmega <69215510+ServerOmega@users.noreply.github.com>
+Date: Sat, 14 Nov 2026 05:36:15 -0800
+Subject: [PATCH 14/14] Post-match trace (logging only, default on): MMS-POST /
+ STUN-POST lines for matchmaker and STUN traffic from recently matched
+ cabinets, MMS-UNHANDLED warning; LogPostMatchTraffic config; 7 tests
+
+---
+ ONLINE_MATCHMAKING.md                         |   8 ++
+ .../Controllers/MatchController.cs            |  31 +++-
+ .../Matchmaking/BuiltinStunServer.cs          |  16 ++-
+ Server-Infinite/Matchmaking/Matchmaker.cs     |  44 ++++++
+ Server-Infinite/Matchmaking/MmsTrace.cs       |  72 ++++++++++
+ .../Config/OnlineMatchingConfigurations.cs    |   7 +
+ Server-Infinite/Program.cs                    |   6 +
+ .../Matchmaking.Tests/PostMatchTraceTests.cs  | 133 ++++++++++++++++++
+ 8 files changed, 315 insertions(+), 2 deletions(-)
+ create mode 100644 Server-Infinite/Matchmaking/MmsTrace.cs
+ create mode 100644 Tests/Matchmaking.Tests/PostMatchTraceTests.cs
+
+diff --git a/ONLINE_MATCHMAKING.md b/ONLINE_MATCHMAKING.md
+index f4a2bfe..2809d7c 100644
+--- a/ONLINE_MATCHMAKING.md
++++ b/ONLINE_MATCHMAKING.md
+@@ -52,6 +52,7 @@
+   "StaleAfterSeconds": 20,     // drop a waiting cabinet that stopped polling (min 3 x poll interval)
+   "ClassMatchScheduleMode": "Both",  // Both | Hours | UnixTime
+   "VerboseLog": false,         // true = also one line per CheckMatching poll (debugging only)
++  "LogPostMatchTraffic": true, // MMS-POST / STUN-POST / MMS-UNHANDLED lines (logging only, no card data)
+   "NetworkRealms": "",         // "" = default realms, "off" = none, or "name=cidr,name=cidr"
+   "InStoreScope": "Site",      // in-store match per shop: shop code + shop's public IP; "ShopCode" = code only
+   "ShopKeys": ""               // shops on several IPs: "SHOPA=203.0.113.10/32 203.0.113.11/32,SHOPB=198.51.100.0/28"
+@@ -97,6 +98,13 @@ Card data (ChipId / AccessCode / BootToken) and `pcb_serial` are never logged. O
+ * `drop nodes=[..] reason=...` (replaced by re-entry / same cabinet entered again / matching timeout /
+   cancelled by node N / stopped polling (stale)).
+ * `VerboseLog: true` adds `check node=N -> <code> room=R` per poll.
++* `LogPostMatchTraffic` (true, logging only): for 30 min after a cabinet's room was made, every request it makes to
++  this matchmaker gets an `MMS-POST <method> node=N [apply=A] src=<ip> -> <code> [room=R] (<ms>ms) room=R +Ts by=node|ip`
++  line (keep-polling CheckMatching at most every 15 s per node), and STUN binding requests from its IP a
++  `STUN-POST from=<ip:port> change=.. room=R +Ts by=ip` line (at most every 10 s per sender). `+Ts` = seconds since the
++  room was made, so traffic during or after the battle shows directly. Unknown MMS methods always give
++  `MMS-UNHANDLED method=typeN ...` (warning). No pcb serial, am id or card data in these lines. The matchmaker never
++  calls a cabinet, an LM or another card server itself; these lines show what the cabinets call.
+ Request source is the TCP peer (`RemoteIpAddress`, IPv4-mapped shown as IPv4); proxy headers are not trusted.
+ 
+ ## One server for LM and non-LM players (2026-11-13, exvs2-lobbies `analysis/lm-and-online.md`)
+diff --git a/Server-Infinite/Controllers/MatchController.cs b/Server-Infinite/Controllers/MatchController.cs
+index de1e4f8..5ccf2fb 100644
+--- a/Server-Infinite/Controllers/MatchController.cs
++++ b/Server-Infinite/Controllers/MatchController.cs
+@@ -10,10 +10,15 @@ namespace ServerInfinite.Controllers;
+ public class MatchController : BaseController<MatchController>
+ {
+     private readonly IMediator _mediator;
++    private readonly ServerInfinite.Matchmaking.Matchmaker? _mm;
++    private readonly ServerInfinite.Matchmaking.MmsTrace? _trace;
+     
+-    public MatchController(IMediator mediator)
++    public MatchController(IMediator mediator, ServerInfinite.Matchmaking.Matchmaker? mm = null,
++        ServerInfinite.Matchmaking.MmsTrace? trace = null)
+     {
+         _mediator = mediator;
++        _mm = mm;
++        _trace = trace;
+     }
+     
+     // exvs2-lobbies: "/mms" is an alias so a MatchUrl written for the Python server also works here.
+@@ -24,6 +29,7 @@ public class MatchController : BaseController<MatchController>
+     public async Task<IActionResult> Match([FromBody] Request request)
+     {
+         Logger.LogInformation("Request is {Request}", request.Stringify());
++        var started = System.Diagnostics.Stopwatch.GetTimestamp();
+         
+         var response = request.Type switch
+         {
+@@ -36,8 +42,31 @@ public class MatchController : BaseController<MatchController>
+             _ => UnhandledResponse(request)
+         };
+         
++        TracePostMatch(request, response, started);
+         return Ok(response);
+     }
++
++    // exvs2-lobbies post-match trace: MMS-POST line for a recently matched cabinet, MMS-UNHANDLED for unknown methods
++    private void TracePostMatch(Request request, Response response, long started)
++    {
++        if (_trace == null) return;
++        try
++        {
++            var src = HttpContext?.Connection.RemoteIpAddress;
++            if (src is { IsIPv4MappedToIPv6: true }) src = src.MapToIPv4();
++            var now = MmsClock.Now;
++            var ms = (System.Diagnostics.Stopwatch.GetTimestamp() - started) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
++            var ctx = _mm?.PostMatchContext(ServerInfinite.Matchmaking.MmsTrace.NodeOf(request), src?.ToString(), now);
++            var line = _trace.Line(request, response, src?.ToString(), ctx, ms, now);
++            if (line == null) return;
++            if (line.StartsWith("MMS-UNHANDLED")) Logger.LogWarning("{Line}", line);
++            else Logger.LogInformation("{Line}", line);
++        }
++        catch (Exception e)
++        {
++            Logger.LogDebug("post-match trace failed: {Error}", e.Message);
++        }
++    }
+     
+     private Response UnhandledResponse(Request request)
+     {
+diff --git a/Server-Infinite/Matchmaking/BuiltinStunServer.cs b/Server-Infinite/Matchmaking/BuiltinStunServer.cs
+index 4ef4c22..3628b72 100644
+--- a/Server-Infinite/Matchmaking/BuiltinStunServer.cs
++++ b/Server-Infinite/Matchmaking/BuiltinStunServer.cs
+@@ -25,10 +25,14 @@ public sealed class BuiltinStunServer : BackgroundService
+     int _port0, _port1;
+     bool _hasAltIp;
+ 
+-    public BuiltinStunServer(IOptions<CardServerConfig> cfg, ILogger<BuiltinStunServer> log)
++    readonly Matchmaker? _matcher;
++    readonly ConcurrentDictionary<string, DateTime> _postSeen = new();
++
++    public BuiltinStunServer(IOptions<CardServerConfig> cfg, ILogger<BuiltinStunServer> log, Matchmaker? matcher = null)
+     {
+         _mm = cfg.Value.OnlineMatching;
+         _log = log;
++        _matcher = matcher;
+     }
+ 
+     protected override async Task ExecuteAsync(CancellationToken ct)
+@@ -162,6 +166,16 @@ public sealed class BuiltinStunServer : BackgroundService
+ 
+         var key = $"{fromIp}:{from.Port}";
+         var now = DateTime.UtcNow;
++        // exvs2-lobbies post-match trace: STUN from a cabinet that was matched recently (at most every 10 s per sender)
++        if (_mm.LogPostMatchTraffic && _matcher != null &&
++            _matcher.PostMatchContext(0, fromIp.ToString(), ServerInfinite.Handlers.Match.MmsClock.Now) is { } ctx &&
++            (!_postSeen.TryGetValue(key, out var lastPost) || (now - lastPost).TotalSeconds >= 10))
++        {
++            _postSeen[key] = now;
++            if (_postSeen.Count > 4096) _postSeen.Clear();
++            _log.LogInformation("STUN-POST from={From} change={Change} {Context}", key,
++                (changeIp ? "ip" : "") + (changePort ? "port" : "") is var pc && pc.Length > 0 ? pc : "none", ctx);
++        }
+         if (_mm.VerboseLog || !_seen.TryGetValue(key, out var last) || (now - last).TotalSeconds > 60)
+         {
+             _seen[key] = now;
+diff --git a/Server-Infinite/Matchmaking/Matchmaker.cs b/Server-Infinite/Matchmaking/Matchmaker.cs
+index dd85f21..68afadd 100644
+--- a/Server-Infinite/Matchmaking/Matchmaker.cs
++++ b/Server-Infinite/Matchmaking/Matchmaker.cs
+@@ -177,6 +177,14 @@ public sealed class Matchmaker
+     public Action<string>? Warn { get; set; }
+     /// <summary>Also log every CheckMatching result (one line per poll; off by default).</summary>
+     public bool Verbose { get; set; }
++    /// <summary>
++    /// post-match trace 2026-11-14: seconds after a room was made during which later MMS / STUN traffic from its
++    /// cabinets (by node id, else by HTTP / UDP source IP) is tagged "post-match" in the log. 0 = off.
++    /// </summary>
++    public double PostMatchWindow { get; set; } = 1800;
++    private readonly Dictionary<uint, (uint Room, double At)> _lastRoomByNode = new();
++    private readonly Dictionary<string, (uint Room, double At)> _lastRoomByIp = new();
++    private const int LastRoomMax = 4096;
+     private readonly HashSet<(string, string)> _warned = new();
+     /// <summary>First node id issued by this process (0 = unknown). An unknown node below it was issued before a
+     /// server restart, so its wait was lost: answer MATCH_CANCELED instead of ERR_MATCH_NOENTRY.</summary>
+@@ -536,6 +544,7 @@ public sealed class Matchmaker
+         {
+             _queue.Remove(u);
+             u.Room = room;
++            RememberRoom(u, room);
+         }
+         Log?.Invoke($"MATCH room={room.RoomId} {units[0].WorldName} humans-vs-cpu " +
+                     $"[{string.Join(",", humans.Select(c => c.NodeId))}] vs CPU [{string.Join(",", npcs.Select(n => n.Client.NodeId))}] " +
+@@ -579,6 +588,7 @@ public sealed class Matchmaker
+         {
+             _queue.Remove(u);
+             u.Room = room;
++            RememberRoom(u, room);
+         }
+         string Desc(List<Unit> s) => string.Join("+", s.Select(u => $"{(u.IsTeam ? "T" : "S")}[{string.Join(",", u.NodeIds)}]"));
+         Log?.Invoke($"MATCH room={room.RoomId} {all[0].WorldName} {Desc(sides.S0)} vs {Desc(sides.S1)} (humans={room.Humans}/4)");
+@@ -608,6 +618,7 @@ public sealed class Matchmaker
+         {
+             _queue.Remove(u);
+             u.Room = room;
++            RememberRoom(u, room);
+         }
+         Log?.Invoke($"MATCH room={room.RoomId} {a.WorldName} pair [{string.Join(",", ordered.Select(u => u.LeaderNode))}] " +
+                     $"key={a.Attr2} am=[{string.Join(",", ordered.Select(Am))}] (humans=2/2, both group 0)");
+@@ -647,6 +658,39 @@ public sealed class Matchmaker
+         return c;
+     }
+ 
++    private void RememberRoom(Unit u, Room room)
++    {
++        if (PostMatchWindow <= 0) return;
++        foreach (var n in u.NodeIds) _lastRoomByNode[n] = (room.RoomId, room.At);
++        foreach (var ip in u.SourceByNode.Values) _lastRoomByIp[ip] = (room.RoomId, room.At);
++        foreach (var c in u.Humans)
++            if (!string.IsNullOrEmpty(c.GlobalIpaddress) && c.GlobalIpaddress != "0.0.0.0")
++                _lastRoomByIp[NetDiag.Norm(c.GlobalIpaddress)] = (room.RoomId, room.At);
++        Trim(_lastRoomByNode); Trim(_lastRoomByIp);
++        static void Trim<TK>(Dictionary<TK, (uint Room, double At)> d) where TK : notnull
++        {
++            if (d.Count <= LastRoomMax) return;
++            foreach (var k in d.OrderBy(kv => kv.Value.At).Take(d.Count - LastRoomMax).Select(kv => kv.Key).ToList()) d.Remove(k);
++        }
++    }
++
++    /// <summary>
++    /// post-match trace: the last room of this node (or, failing that, of this source IP) if it was made less than
++    /// <see cref="PostMatchWindow"/> s ago, e.g. "room=7 +184s by=node". null = no recent match.
++    /// </summary>
++    public string? PostMatchContext(uint nodeId, string? sourceIp, double now)
++    {
++        if (PostMatchWindow <= 0) return null;
++        lock (_gate)
++        {
++            string? by = null; (uint Room, double At) r = default;
++            if (nodeId != 0 && _lastRoomByNode.TryGetValue(nodeId, out r)) by = "node";
++            else if (!string.IsNullOrEmpty(sourceIp) && _lastRoomByIp.TryGetValue(NetDiag.Norm(sourceIp), out r)) by = "ip";
++            if (by == null || now - r.At > PostMatchWindow || now < r.At) return null;
++            return $"room={r.Room} +{now - r.At:0}s by={by}";
++        }
++    }
++
+     /// <summary>Remove a unit. With <paramref name="now"/>, its other human nodes (e.g. the partner of a
+     /// fixed pair) get MATCH_CANCELED on their next poll instead of ERR_MATCH_NOENTRY.</summary>
+     private void Drop(Unit t, double? now = null, uint? except = null, string? reason = null)
+diff --git a/Server-Infinite/Matchmaking/MmsTrace.cs b/Server-Infinite/Matchmaking/MmsTrace.cs
+new file mode 100644
+index 0000000..a84e255
+--- /dev/null
++++ b/Server-Infinite/Matchmaking/MmsTrace.cs
+@@ -0,0 +1,72 @@
++using nue.protocol.mms;
++
++namespace ServerInfinite.Matchmaking;
++
++/// <summary>
++/// exvs2-lobbies post-match trace (2026-11-14): one short line per MMS request that comes from a cabinet that was
++/// matched recently, plus a warning for MMS methods this server does not handle. Logging only: the replies are
++/// unchanged. The lines carry node id, apply id, method, reply code, handling time and the HTTP source IP; never
++/// pcb_serial, am_id, card ids or access codes.
++/// </summary>
++public sealed class MmsTrace
++{
++    private readonly Dictionary<(uint, MethodType), double> _lastCheck = new();
++    private readonly object _gate = new();
++
++    /// <summary>OnlineMatching.LogPostMatchTraffic (default true).</summary>
++    public bool Enabled { get; set; } = true;
++
++    /// <summary>Repeated CheckMatching polls of one node are logged at most once per this many seconds.</summary>
++    public double CheckEvery { get; set; } = 15;
++
++    public static uint NodeOf(Request r) => r.Type switch
++    {
++        MethodType.EntryMatching => r.entry_matching?.Myclient?.NodeId ?? 0,
++        MethodType.CheckMatching => r.check_matching?.NodeId ?? 0,
++        MethodType.CancelMatching => r.cancel_matching?.NodeId ?? 0,
++        _ => 0
++    };
++
++    public static uint ApplyOf(Request r) => r.Type switch
++    {
++        MethodType.EntryMatching => r.entry_matching?.ApplyId ?? 0,
++        MethodType.CancelMatching => r.cancel_matching?.ApplyId ?? 0,
++        _ => 0
++    };
++
++    public static bool IsHandled(MethodType t) => t is MethodType.Ping or MethodType.IssueNodeId
++        or MethodType.MatchingSetting or MethodType.EntryMatching or MethodType.CheckMatching or MethodType.CancelMatching;
++
++    /// <summary>
++    /// The line to log for this request, or null. <paramref name="context"/> = Matchmaker.PostMatchContext (null when
++    /// the cabinet had no recent match). Unhandled methods are always reported.
++    /// </summary>
++    public string? Line(Request req, Response? resp, string? sourceIp, string? context, double ms, double now)
++    {
++        if (!Enabled) return null;
++        var node = NodeOf(req);
++        var type = Enum.IsDefined(typeof(MethodType), req.Type) ? req.Type.ToString() : $"type{(int)req.Type}";
++        if (!IsHandled(req.Type))
++            return $"MMS-UNHANDLED method={type} node={node} src={sourceIp ?? "-"} -> {resp?.Code.ToString() ?? "-"}" +
++                   (context != null ? $" post-match {context}" : "");
++        if (context == null) return null;
++        if (req.Type == MethodType.CheckMatching)
++        {
++            var matched = resp?.check_matching?.Clients?.Count > 0;
++            lock (_gate)
++            {
++                var key = (node, req.Type);
++                // always log a poll that returns a room or an error; rate-limit the plain "keep polling" ones
++                if (!matched && resp?.Code == ErrorCode.Success && _lastCheck.TryGetValue(key, out var last) &&
++                    now - last < CheckEvery)
++                    return null;
++                _lastCheck[key] = now;
++                if (_lastCheck.Count > 8192) _lastCheck.Clear();
++            }
++        }
++        var room = resp?.check_matching?.Clients?.Count > 0 ? $" room={resp.check_matching.RoomId}" : "";
++        var apply = ApplyOf(req);
++        return $"MMS-POST {type} node={node}{(apply != 0 ? $" apply={apply}" : "")} src={sourceIp ?? "-"} -> " +
++               $"{resp?.Code.ToString() ?? "-"}{room} ({ms:0}ms) {context}";
++    }
++}
+diff --git a/Server-Infinite/Models/Config/OnlineMatchingConfigurations.cs b/Server-Infinite/Models/Config/OnlineMatchingConfigurations.cs
+index 747b322..708f0e4 100644
+--- a/Server-Infinite/Models/Config/OnlineMatchingConfigurations.cs
++++ b/Server-Infinite/Models/Config/OnlineMatchingConfigurations.cs
+@@ -64,6 +64,13 @@ public class OnlineMatchingConfigurations
+     /// <summary>Also log every CheckMatching result (one line per poll). Address/NAT lines are always logged once per entry/match.</summary>
+     public bool VerboseLog { get; set; } = false;
+     /// <summary>
++    /// post-match trace (logging only, default on): log "MMS-POST" / "STUN-POST" lines for matching-server and STUN
++    /// traffic from a cabinet within 30 min of its last match (who called, what, reply, timing), and "MMS-UNHANDLED"
++    /// for unknown MMS methods. Never logs card ids / access codes. Shows whether anything talks to this server
++    /// after a battle.
++    /// </summary>
++    public bool LogPostMatchTraffic { get; set; } = true;
++    /// <summary>
+     /// Network realms, "name=cidr,name=cidr". Players whose STUN global IP falls in different realms can't reach each
+     /// other and are never matched together; everyone else (any store / LM / home) shares one pool per mode.
+     /// "" = defaults (radmin 26/8, hamachi 25/8, cgnat-overlay 100.64/10, lan = private + loopback, rest = internet);
+diff --git a/Server-Infinite/Program.cs b/Server-Infinite/Program.cs
+index 5db8b9b..1f9c8a8 100644
+--- a/Server-Infinite/Program.cs
++++ b/Server-Infinite/Program.cs
+@@ -98,9 +98,15 @@ try
+             InStoreScope = mm.InStoreScope,
+             ShopKeys = ServerInfinite.Matchmaking.NetDiag.ParseShopKeys(mm.ShopKeys),
+             StaleAfter = Math.Max(3 * Math.Max(1u, mm.PollingIntervalSeconds), mm.StaleAfterSeconds),
++            PostMatchWindow = mm.LogPostMatchTraffic ? 1800 : 0,
+             FirstNodeThisRun = (alloc as ServerInfinite.Matchmaking.FileNodeIdAllocator)?.FirstThisRun ?? 0
+         };
+     });
++    // exvs2-lobbies post-match trace (logging only, default on): OnlineMatching.LogPostMatchTraffic
++    builder.Services.AddSingleton(sp => new ServerInfinite.Matchmaking.MmsTrace
++    {
++        Enabled = sp.GetRequiredService<IOptions<CardServerConfig>>().Value.OnlineMatching.LogPostMatchTraffic
++    });
+     builder.Services.AddHostedService<ServerInfinite.Matchmaking.BuiltinStunServer>();
+     builder.Services.AddHttpContextAccessor();
+     
+diff --git a/Tests/Matchmaking.Tests/PostMatchTraceTests.cs b/Tests/Matchmaking.Tests/PostMatchTraceTests.cs
+new file mode 100644
+index 0000000..310cbdf
+--- /dev/null
++++ b/Tests/Matchmaking.Tests/PostMatchTraceTests.cs
+@@ -0,0 +1,133 @@
++using nue.protocol.mms;
++using ServerInfinite.Matchmaking;
++using Xunit;
++
++namespace Matchmaking.Tests;
++
++// post-match trace (2026-11-14): logging only. Does anything reach the MMS / STUN after a match, and from whom?
++public class PostMatchTraceTests
++{
++    private static Client Cl(uint node, string ip)
++    {
++        var c = new Client
++        {
++            NodeId = node, PcbSerial = $"PCBSERIAL{node}", LocId = $"L{node}", PrefCode = 13,
++            GlobalIpaddress = ip, NatMappingType = NatMappingType.NmEndpointIndependent,
++            NatFilteringType = NatFilteringType.NfEndpointIndependent
++        };
++        c.Properties.Add(new Client.Property { PropertyId = 0, PropertyValue = "Y" });
++        return c;
++    }
++
++    private static Request.EntryMatching Solo(uint node, string ip, uint apply = 1) => new()
++    {
++        ApplyId = apply, Myclient = Cl(node, ip), MatchingTimeout = 150,
++        Myplayer = new Player { BanapassportAmId = 987654 + node },
++        World = new World { MuchaGameId = "GIB1", Version = 1, WorldId = 23 }
++    };
++
++    private static Matchmaker New() => new(fillAfter: 30, allowPartial: true, softWait: 15, seed: 1)
++        { StaleAfter = 1e6, Realms = null };
++
++    private static Request Req(MethodType t, uint node, uint apply = 0) => t switch
++    {
++        MethodType.CheckMatching => new Request { Type = t, RequestId = "r", check_matching = new Request.CheckMatching { NodeId = node } },
++        MethodType.CancelMatching => new Request { Type = t, RequestId = "r", cancel_matching = new Request.CancelMatching { NodeId = node, ApplyId = apply } },
++        MethodType.EntryMatching => new Request { Type = t, RequestId = "r", entry_matching = Solo(node, "203.0.113.5", apply) },
++        _ => new Request { Type = t, RequestId = "r" }
++    };
++
++    [Fact]
++    public void ContextOnlyAfterAMatchAndWithinTheWindow()
++    {
++        var mm = New();
++        Assert.Null(mm.PostMatchContext(1100, null, 0));
++        mm.Entry(Solo(1100, "203.0.113.5"), 0, "192.168.1.69");
++        mm.Entry(Solo(1102, "198.51.100.7"), 0, "10.10.0.2");
++        Assert.Null(mm.PostMatchContext(1100, "192.168.1.69", 10));          // queued, not matched yet
++        var room = mm.Check(1100, 31).Room!;
++        Assert.Equal($"room={room.RoomId} +169s by=node", mm.PostMatchContext(1100, null, 200));
++        Assert.Equal($"room={room.RoomId} +169s by=node", mm.PostMatchContext(1102, null, 200));
++        // no node (Ping / IssueNodeId / STUN): HTTP source IP or STUN global IP of the matched cabinet
++        Assert.Equal($"room={room.RoomId} +69s by=ip", mm.PostMatchContext(0, "10.10.0.2", 100));
++        Assert.Equal($"room={room.RoomId} +69s by=ip", mm.PostMatchContext(0, "198.51.100.7", 100));
++        Assert.Null(mm.PostMatchContext(0, "192.0.2.99", 100));                // someone else
++        Assert.Null(mm.PostMatchContext(1100, null, 31 + 1801));               // window over
++    }
++
++    [Fact]
++    public void WindowZeroIsOff()
++    {
++        var mm = New(); mm.PostMatchWindow = 0;
++        mm.Entry(Solo(1100, "203.0.113.5"), 0); mm.Entry(Solo(1102, "198.51.100.7"), 0);
++        Assert.NotNull(mm.Check(1100, 31).Room);
++        Assert.Null(mm.PostMatchContext(1100, null, 40));
++    }
++
++    [Fact]
++    public void RequeueAfterTheBattleIsANewEntryAndIsTraced()
++    {
++        var mm = New();
++        mm.Entry(Solo(1100, "203.0.113.5"), 0); mm.Entry(Solo(1102, "198.51.100.7"), 0);
++        var first = mm.Check(1100, 31).Room!;
++        // winner re-queues ~3 min later with the next apply_id (same node ids): a fresh wait, not the old room
++        Assert.Equal(ErrorCode.Success, mm.Entry(Solo(1100, "203.0.113.5", apply: 2), 210));
++        var (code, room, _) = mm.Check(1100, 213);
++        Assert.Equal(ErrorCode.Success, code);
++        Assert.Null(room);
++        Assert.Equal($"room={first.RoomId} +182s by=node", mm.PostMatchContext(1100, null, 213));
++    }
++
++    [Fact]
++    public void LinesNameCallerMethodAndReplyButNoCardOrPlayerIds()
++    {
++        var t = new MmsTrace();
++        var entry = Req(MethodType.EntryMatching, 1100, apply: 2);
++        var line = t.Line(entry, new Response { Type = MethodType.EntryMatching, Code = ErrorCode.Success }, "192.168.1.69",
++            "room=1 +190s by=node", 3.2, 221)!;
++        Assert.Equal("MMS-POST EntryMatching node=1100 apply=2 src=192.168.1.69 -> Success (3ms) room=1 +190s by=node", line);
++        Assert.DoesNotContain("PCBSERIAL", line);
++        Assert.DoesNotContain("987654", line);
++        // no recent match -> nothing (normal pre-match traffic is already in the upstream request dump)
++        Assert.Null(t.Line(entry, new Response { Code = ErrorCode.Success }, "192.168.1.69", null, 1, 221));
++        var cancel = t.Line(Req(MethodType.CancelMatching, 1100, 2), new Response { Code = ErrorCode.Success }, "10.10.0.2",
++            "room=1 +100s by=node", 1, 131)!;
++        Assert.StartsWith("MMS-POST CancelMatching node=1100 apply=2 src=10.10.0.2", cancel);
++        var ping = t.Line(Req(MethodType.Ping, 0), new Response { Code = ErrorCode.Success }, "10.10.0.2", "room=1 +60s by=ip", 1, 91)!;
++        Assert.StartsWith("MMS-POST Ping node=0 src=10.10.0.2 -> Success", ping);
++    }
++
++    [Fact]
++    public void UnhandledMethodIsAlwaysReported()
++    {
++        var t = new MmsTrace();
++        var line = t.Line(new Request { Type = (MethodType)7, RequestId = "r" },
++            new Response { Code = ErrorCode.ErrRequest }, "10.10.0.2", null, 1, 5)!;
++        Assert.Equal("MMS-UNHANDLED method=type7 node=0 src=10.10.0.2 -> ErrRequest", line);
++    }
++
++    [Fact]
++    public void KeepPollingChecksAreRateLimitedButResultsAreNot()
++    {
++        var t = new MmsTrace();
++        var chk = Req(MethodType.CheckMatching, 1100);
++        var empty = new Response { Code = ErrorCode.Success, check_matching = new Response.CheckMatching() };
++        const string ctx = "room=1 +200s by=node";
++        Assert.NotNull(t.Line(chk, empty, "x", ctx, 1, 100));
++        Assert.Null(t.Line(chk, empty, "x", ctx, 1, 103));
++        Assert.Null(t.Line(chk, empty, "x", ctx, 1, 112));
++        Assert.NotNull(t.Line(chk, empty, "x", ctx, 1, 116));
++        Assert.NotNull(t.Line(chk, new Response { Code = ErrorCode.MatchCanceled }, "x", ctx, 1, 117));
++        var matched = new Response { Code = ErrorCode.Success, check_matching = new Response.CheckMatching { RoomId = 9 } };
++        matched.check_matching.Clients.Add(new Response.CheckMatching.MatchedClient { GroupId = 0, Client = Cl(1100, "x") });
++        Assert.Contains(" room=9 ", t.Line(chk, matched, "x", ctx, 1, 118));
++    }
++
++    [Fact]
++    public void DisabledLogsNothing()
++    {
++        var t = new MmsTrace { Enabled = false };
++        Assert.Null(t.Line(new Request { Type = (MethodType)7, RequestId = "r" }, null, "x", "room=1 +1s by=node", 1, 1));
++        Assert.True(new MmsTrace().Enabled);   // default on
 +    }
 +}
 -- 

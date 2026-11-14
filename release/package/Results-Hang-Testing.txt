@@ -1,0 +1,44 @@
+RESULTS-SCREEN HANG: TEST OPTIONS AND TOOLS
+===========================================
+
+The hang after a 2-cabinet versus also happens in local LM mode, so it is most likely
+NOT the server. These options and tools help narrow it down. All are safe to leave at
+their defaults.
+
+Options in Configurations\server.json  ->  "CardServerConfig"
+-------------------------------------------------------------
+  PostMatchStubs          false  Answer six unhandled after-match calls. Turn on if
+                                 the log shows "Unhandled case" lines.
+  LogNetworkReport        true   Log the game's network report (NETREPORT lines).
+  PostMatchWatchdogMs     0      0 = off. 8000 caps slow after-match saves, useful if
+                                 another program has ServerInfinite.db open.
+  MaskCardSecretsInLog    true   Hide card codes in the log so logs can be shared.
+  LoadBlackList           300/1/300/300/5 (upstream values). Lower
+                                 ThresholdDelayedRtt to keep laggy pairs apart.
+
+Options in "CardServerConfig" -> "OnlineMatching"
+-------------------------------------------------
+  HumansTeamVsCpu         false  Test only: put two humans on one team vs CPUs.
+                                 Write down WIN or LOSS and whether it hung.
+  LogPostMatchTraffic     true   Log MMS-POST / STUN-POST lines for 30 min after a
+                                 match. If none appear during a hang, the
+                                 matchmaker is not involved.
+
+Tools (read-only, they never change or launch anything)
+-------------------------------------------------------
+  test-tools\check-debugparam.ps1   Checks hidden dev-menu values in testmode_pcb.json.
+    powershell -ExecutionPolicy Bypass -File test-tools\check-debugparam.ps1 -GameDir "C:\path\to\game"
+
+  test-tools\hang-probe.ps1         Run DURING a hang: snapshot of game/server state
+                               (card codes are masked).
+    powershell -ExecutionPolicy Bypass -File test-tools\hang-probe.ps1 -GameDir "C:\path\to\game","C:\path\to\game2" -ServerDir "server"
+
+Suggested test order
+--------------------
+  1. Run check-debugparam.ps1 on both cabinets.
+  2. During a hang, run hang-probe.ps1, then hold the card key ~1 second.
+     Note which cabinet moves on and how long the hang lasted.
+  3. One HumansTeamVsCpu match: note win/loss and whether it hung.
+  4. Try with both cabinets on ONE card server.
+  5. Turn PostMatchStubs on and repeat.
+  6. Check the log for MMS-POST / STUN-POST lines.

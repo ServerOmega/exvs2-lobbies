@@ -66,6 +66,7 @@ KNOWN ISSUES (this is an early test build)
      LM mode without this server, so it's most likely two copies of the game on one PC getting in each other's
      way. The games recover by themselves after a while. Not seen in solo matches vs CPU. Matches between
      separate PCs are not tested yet. (Under investigation.)
+     Test options and tools that help narrow it down: see Results-Hang-Testing.txt.
   2. Only tested with two cabinets on one Windows PC (2026-11-13). Matching between different homes /
      over the internet / over a VPN is NOT tested yet - you are the testers. Please report what happens.
   3. Online tag and partner recruit are built but UNTESTED in the real game. Both partners must use the

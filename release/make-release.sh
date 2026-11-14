@@ -12,7 +12,7 @@ cp -r "$HERE/package/." "$STAGE/"
 # the patch must be the published one
 cmp "$STAGE/files/online-matchmaking.patch" "$REPO/server-sketch/ib-server/online-matchmaking.patch"
 # Windows line endings for files people open in Notepad / cmd; LF for Linux scripts
-for f in "$STAGE"/*.txt "$STAGE"/*.bat "$STAGE"/scripts/*.ps1; do sed -i 's/\r$//; s/$/\r/' "$f"; done
+for f in "$STAGE"/*.txt "$STAGE"/*.bat "$STAGE"/scripts/*.ps1 "$STAGE"/test-tools/*.ps1; do sed -i 's/\r$//; s/$/\r/' "$f"; done
 for f in "$STAGE"/linux/*; do sed -i 's/\r$//' "$f"; done
 chmod +x "$STAGE"/linux/*.sh
 echo "$VERSION" > "$STAGE/files/VERSION"

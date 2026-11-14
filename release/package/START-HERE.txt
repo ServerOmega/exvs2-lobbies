@@ -57,6 +57,9 @@ Other files
   Public-Server.txt       hosting for people outside your home: port forwarding, VPN, VPS,
                           and exactly where the public / VPN IP goes
   Troubleshooting.txt     problems, log messages, KNOWN ISSUES
+  Results-Hang-Testing.txt  test options + tools for the results-screen hang
+  test-tools\             read-only test scripts (check-debugparam.ps1, hang-probe.ps1)
+  LICENSE.txt             GPL-3.0 for our scripts/docs (NOT the card server or the patch)
   Import-Images.bat / linux/import-images.sh   helper to copy only the picture folder
   scripts\                the PowerShell scripts the .bat files run (you can read them)
   linux\                  the Linux scripts + a systemd service example
