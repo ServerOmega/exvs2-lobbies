@@ -98,7 +98,9 @@ Linux VPS
         sudo apt update && sudo apt install -y curl unzip git python3
   2. Build (downloads a private .NET 9 into tools/, no root):   ./linux/build-server.sh
      The server lands in  server-linux/  (Server-Infinite + Configurations/ + wwwroot/).
-     For the card-website pictures: OFFICIAL_SERVER_FOLDER=/path/to/official/Server-Infinite ./linux/build-server.sh
+     For the card-website pictures, see Import-Pictures.txt. Either:
+        OFFICIAL_SERVER_FOLDER=/path/to/official/Server-Infinite ./linux/build-server.sh
+     or, after building:  ./linux/import-images.sh /path/to/Server-Infinite-v1.2.0.zip
   3. Configure:   ./linux/configure.sh             (asks; or: ./linux/configure.sh --ip <public IP> --yes)
   4. Firewall (ufw example) - also open the same ports in the provider's panel:
         sudo ufw allow OpenSSH

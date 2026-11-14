@@ -17,8 +17,11 @@ Starting (3-Start-Server.bat / linux/start-server.sh)
   "STUN built-in server could not bind UDP 3478"   another program (another copy of this server, coturn) uses it.
   A notice window for 5 seconds      normal (the original card server's anti-scam notice). Windows only.
   Linux: "Couldn't find a valid ICU package"   start-server.sh handles this; or install libicu.
-  Card website has no pictures       the pictures aren't in the source code; re-run step 1 and give it your
-                                     official Server-Infinite v1.2.0 folder.
+  Card website has no pictures       the pictures aren't in the source code. See Import-Pictures.txt:
+                                     download Server-Infinite-v1.2.0.zip from the official v1.2.0 release
+                                     (https://github.com/Chiang-17/EXVS2-IB-Server/releases/tag/v1.2.0)
+                                     and run Import-Images.bat (or ./linux/import-images.sh), or re-run
+                                     step 1 and give it the official folder.
 
 Players can't match - read the server log (window or Logs\log-<date>.txt)
 ---------------------------------------------------------------------------

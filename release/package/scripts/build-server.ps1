@@ -157,6 +157,7 @@ if (-not $OfficialServerFolder -and -not $NoPrompt) {
     Write-Host "Optional: the card website (WebUI) pictures are not part of the source code." -ForegroundColor Yellow
     Write-Host "If you have the official Server-Infinite v1.2.0 folder (the one with its own Server.exe and wwwroot),"
     Write-Host "type or paste its path to copy the pictures (and, if you want, your card database)."
+    Write-Host "You can also do this later with Import-Images.bat (see Import-Pictures.txt)."
     $OfficialServerFolder = Read-Host "Path (or just press Enter to skip)"
 }
 $OfficialServerFolder = $OfficialServerFolder.Trim().Trim('"')

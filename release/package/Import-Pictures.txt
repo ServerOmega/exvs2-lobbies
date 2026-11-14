@@ -1,0 +1,102 @@
+Importing card-website pictures
+================================
+
+The card website (the page at http://<your-server>:28080/) shows pictures of
+mobile suits, pilots, titles and so on. Those pictures are not in the source
+code and are not in this package (the original card server has no license, so
+we cannot include them). Matchmaking works without them; only the website
+looks empty.
+
+Get the pictures from the official v1.2.0 release (about 1 GB):
+  https://github.com/Chiang-17/EXVS2-IB-Server/releases/tag/v1.2.0
+
+Download  Server-Infinite-v1.2.0.zip  and extract it. The official folder is
+the one that contains  Server-Infinite.exe  and a  wwwroot  folder
+(wwwroot\images inside it: about 12,000 pictures, mostly .webp).
+
+Do not run that official Server.exe at the same time as this server: they
+cannot both use port 28080.
+
+What gets copied
+  Only the picture folder:  official wwwroot\images  ->  your server's wwwroot\images.
+  The official program, Configurations\server.json and the card database
+  (ServerInfinite.db) are left alone, unless you ask to copy the database
+  (see the bottom of this file).
+
+-------------------------------------------------------------------------------------
+Windows
+-------------------------------------------------------------------------------------
+  A) During the first build
+     Double-click  1-Build-Server.bat.  At the end it asks for your official
+     Server-Infinite v1.2.0 folder. Paste the path of the extracted folder
+     (the one with Server-Infinite.exe and wwwroot). Press Enter to skip.
+
+  B) After the server is already built
+     Double-click  Import-Images.bat  and give it the official folder or the
+     .zip. Or in a command prompt, from this package folder:
+
+       Import-Images.bat "D:\Downloads\Server-Infinite-v1.2.0"
+       Import-Images.bat "D:\Downloads\Server-Infinite-v1.2.0.zip"
+
+     It writes into  server\wwwroot\images.
+
+  C) Manual copy (if you prefer not to use the script)
+     Copy the official  wwwroot\images  folder into  server\wwwroot\images.
+     Create  server\wwwroot\images  if it isn't there yet. Do not copy the
+     official exe, and do not overwrite  Configurations\server.json  or
+     ServerInfinite.db.
+
+-------------------------------------------------------------------------------------
+Linux
+-------------------------------------------------------------------------------------
+  A) During the build
+
+       OFFICIAL_SERVER_FOLDER=/path/to/official ./linux/build-server.sh
+
+  B) After the server is already built
+
+       ./linux/import-images.sh /path/to/Server-Infinite-v1.2.0.zip
+       ./linux/import-images.sh /path/to/official-folder
+       ./linux/import-images.sh /path/to/official-folder /path/to/server-linux
+
+  C) Manual copy
+
+       mkdir -p server-linux/wwwroot/images
+       cp -rn /path/to/official/wwwroot/images/. server-linux/wwwroot/images/
+
+     On Linux, some official files are named  .WEBP  (capital letters). The
+     website asks for  .webp, so those would be missing until you rename
+     them. The import script does this for you. A one-line fix if you copied
+     by hand:
+
+       find server-linux/wwwroot/images -name '*.WEBP' -exec sh -c 'mv "$1" "${1%.WEBP}.webp"' _ {} \;
+
+-------------------------------------------------------------------------------------
+After the copy
+-------------------------------------------------------------------------------------
+  Refresh the card website with a hard reload (Ctrl+F5). If pictures still
+  don't show, restart the server (close 3-Start-Server.bat / Ctrl+C, then
+  start it again) and hard-reload once more.
+
+  To check: open  http://<your-server>:28080/images/mobile_suits/0.webp
+  in a browser — you should see a mobile-suit picture, not an error page.
+
+-------------------------------------------------------------------------------------
+Optional: copy your card database
+-------------------------------------------------------------------------------------
+  Only if you want this server to use cards from an official server folder
+  you already used. The official v1.2.0 zip does not include a database.
+
+  Back up first. The commands below copy ServerInfinite.db only when your
+  new server does not already have one; they never overwrite an existing
+  database.
+
+    Import-Images.bat "D:\path\to\official-folder" -Database
+    ./linux/import-images.sh /path/to/official-folder --database
+
+-------------------------------------------------------------------------------------
+Do not
+-------------------------------------------------------------------------------------
+  - Copy the official  Server-Infinite.exe  or  Configurations\  over this
+    server (you would lose the matchmaking add-on, or your settings).
+  - Put the official zip or pictures into git / this project's repository.

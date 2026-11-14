@@ -10,7 +10,7 @@
 
 ## ➡️ [Setup guide: host a matchmaking server / connect your cabinet](docs/SETUP.md)
 
-## 📦 [Download the pre-release server package (Windows + Linux)](https://github.com/ServerOmega/exvs2-matchmaking/releases) — build, configure and start with three double-clicks; hosting a public server (port forwarding / VPN / VPS): [`release/package/Public-Server.txt`](release/package/Public-Server.txt)
+## 📦 [Download the pre-release server package (Windows + Linux)](https://github.com/ServerOmega/exvs2-matchmaking/releases) — build, configure and start with three double-clicks; hosting a public server (port forwarding / VPN / VPS): [`release/package/Public-Server.txt`](release/package/Public-Server.txt); card-website pictures from the official v1.2.0 release: [`release/package/Import-Pictures.txt`](release/package/Import-Pictures.txt)
 
 **Goal: one universal matchmaking server that everyone connects to.** Players at a store with an LM, players
 without an LM, and players at many different LMs all use the same server and can match each other wherever the

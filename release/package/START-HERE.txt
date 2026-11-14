@@ -24,7 +24,8 @@ QUICK START (Windows)
        - Needs internet. Downloads .NET 9 and git into this folder if you don't have them (no admin needed).
        - At the end it asks for your official Server-Infinite v1.2.0 folder: give it if you have one,
          so the card website gets its pictures (and, if you want, a COPY of your card database).
-         Just press Enter to skip.
+         Just press Enter to skip. To add the pictures later, see Import-Pictures.txt
+         (or double-click Import-Images.bat).
 
   2. Double-click  2-Configure.bat   and answer the questions:
        "1 = HOST" : this PC is the matchmaking server other players connect to.
@@ -44,15 +45,19 @@ QUICK START (Linux PC or rented VPS - no GPU needed)
      ./linux/build-server.sh
      ./linux/configure.sh          (asks for the public or VPN IP)
      ./linux/start-server.sh
+     Card-website pictures (optional): see Import-Pictures.txt, e.g.
+       ./linux/import-images.sh /path/to/Server-Infinite-v1.2.0.zip
   Details, firewall commands and running it at boot (systemd): Public-Server.txt, section "Linux VPS".
 
 -------------------------------------------------------------------------------------
 Other files
 -------------------------------------------------------------------------------------
   Connect-Your-Game.txt   how players point their game at a server
+  Import-Pictures.txt     how to copy the card-website pictures from the official v1.2.0 release
   Public-Server.txt       hosting for people outside your home: port forwarding, VPN, VPS,
                           and exactly where the public / VPN IP goes
   Troubleshooting.txt     problems, log messages, KNOWN ISSUES
+  Import-Images.bat / linux/import-images.sh   helper to copy only the picture folder
   scripts\                the PowerShell scripts the .bat files run (you can read them)
   linux\                  the Linux scripts + a systemd service example
   files\online-matchmaking.patch   our changes to the card server (source code, readable)

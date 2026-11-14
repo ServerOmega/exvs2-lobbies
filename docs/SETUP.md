@@ -37,6 +37,13 @@ dotnet test Tests/Matchmaking.Tests      # optional: matchmaker unit tests
 No pre-built server exe is published (upstream has no license); the package above builds it on your PC. If you already run an IB card server, copy its
 `ServerInfinite.db` next to the new exe to keep your cards (**back it up first**; a migration adds one column).
 
+The card website (`http://<host>:28080/`) also needs mobile-suit / pilot pictures. Those are **not in the source**
+(and not in our package). Matchmaking works without them; only the website looks empty. Download
+[Server-Infinite-v1.2.0.zip](https://github.com/Chiang-17/EXVS2-IB-Server/releases/tag/v1.2.0), then import only
+`wwwroot/images` into your built server's `wwwroot/images` — step-by-step for Windows and Linux, including helper
+scripts: [`release/package/Import-Pictures.txt`](../release/package/Import-Pictures.txt). The build scripts can also
+copy them if you pass the official folder (`1-Build-Server.bat` asks; Linux: `OFFICIAL_SERVER_FOLDER=... ./linux/build-server.sh`).
+
 ### A2. Configure `Configurations/server.json` → `CardServerConfig.OnlineMatching`
 Minimum for a matchmaker with built-in STUN:
 ```json
